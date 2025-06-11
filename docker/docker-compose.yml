@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - API_PORT=8080
+      - INGEST_URL=http://ingest:8081
+      - PROCESSOR_URL=http://processor:8082
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      ingest:
+        condition: service_healthy
+      processor:
+        condition: service_healthy
+    networks:
+      - diplom-net
+
+  ingest:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ingest
+    ports:
+      - "8081:8081"
+    environment:
+      - INGEST_PORT=8081
+      - PROCESSOR_URL=http://processor:8082
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8081"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      processor:
+        condition: service_healthy
+    networks:
+      - diplom-net
+
+  processor:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.processor
+    ports:
+      - "8082:8082"
+    environment:
+      - PROCESSOR_PORT=8082
+      - PROCESSOR_WORKERS=4
+      - QUEUE_SIZE=1000
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8082"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - diplom-net
+
+networks:
+  diplom-net:
+    driver: bridge 

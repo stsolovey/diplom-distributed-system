@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package diplom.v1;
+
+option go_package = "github.com/stsolovey/diplom-distributed-system/internal/models";
+
+// Базовое сообщение для обработки
+message DataMessage {
+    string id = 1;           // Уникальный ID сообщения
+    int64 timestamp = 2;     // Unix timestamp
+    string source = 3;       // Источник данных
+    bytes payload = 4;       // Полезная нагрузка
+    map<string, string> metadata = 5; // Дополнительные метаданные
+}
+
+// Результат обработки
+message ProcessingResult {
+    string message_id = 1;   // ID исходного сообщения
+    int64 processed_at = 2;  // Время обработки
+    bool success = 3;        // Успешность обработки
+    string error = 4;        // Сообщение об ошибке (если есть)
+    bytes result = 5;        // Результат обработки
+}
+
+// Статус сервиса
+message ServiceStatus {
+    string service_name = 1;
+    bool is_healthy = 2;
+    int64 uptime_seconds = 3;
+    int64 messages_processed = 4;
+} 

@@ -1,0 +1,435 @@
+# -------------------------------------------------------------------
+# Operating System-specific files
+# -------------------------------------------------------------------
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+# Thumbnails and Spotlight indexing
+._*
+.Spotlight-V100/
+.Trashes
+.DocumentRevisions-V100/
+.fseventsd
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+# Folder config files from Windows
+Desktop.ini
+# Windows installer files
+[Bb]in/   # if you produce .exe in a bin directory
+# Linux swap / editor backup
+*~   # backup files ending with ~
+# Kernel crash dumps
+vmcore*
+
+# -------------------------------------------------------------------
+# General Editor / IDE
+# -------------------------------------------------------------------
+
+# IntelliJ IDEA (and other JetBrains IDEs)
+.idea/
+*.iws
+*.iml
+*.ipr
+# Ignore all workspace-specific files under .idea/
+*.tmproj
+# User-specific files from the out directory
+out/
+
+# VS Code
+.vscode/
+# If you commit a workspace file, ignore personal settings:
+*.code-workspace
+
+# Vim / Neovim swap files, persistent undo files, session files
+*.swp
+*.swo
+*.viminfo
+*.un~
+Session.vim
+
+# Emacs
+*~
+*.elc
+# Backup files
+# also ignore .#* (lockfiles)
+.#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# GNU Global
+.GGTags
+
+# -------------------------------------------------------------------
+# Cursor-specific (ignore Cursor's own caches/workspace files)
+# -------------------------------------------------------------------
+
+# If Cursor stores any cache in a ".cursor" folder in project root
+.cursor/
+# If Cursor outputs intermediate files to a "cursor-out" directory
+cursor-out/
+# If Cursor creates temporary files in "cursor-temp"
+cursor-temp/
+# Sometimes Cursor may store logs in .cursor-logs
+.cursor-logs/
+# If using cursor .json config files that shouldn't be versioned
+*.cursor.json
+.supercode/
+
+# -------------------------------------------------------------------
+# Python Virtual Environments & Cache
+# -------------------------------------------------------------------
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Python testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Django static files (if collected)
+staticfiles/
+/static/
+
+# Django media files (if stored locally)
+media/
+
+# -------------------------------------------------------------------
+# Code Quality Tools Cache
+# -------------------------------------------------------------------
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# -------------------------------------------------------------------
+# Build Artifacts / Temporal Files
+# -------------------------------------------------------------------
+
+# Compiled object files
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.exe
+*.out
+
+# Build directories
+build/
+dist/
+tmp/
+temp/
+
+# Maven / Gradle / Java
+target/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+# Generated files
+generated-sources/
+generated-test-sources/
+
+# Rust
+target/
+# Cargo artifacts
+**/Cargo.lock
+
+# Go
+# Binaries for programs and plugins
+*.exe
+*.dll
+*.so
+*.dylib
+# If you use Go modules, ignore the module cache (optional—rarely committed)
+GOPATH/pkg/
+# If you vendor dependencies
+vendor/
+
+# Node / JavaScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# If you're using a package-lock file, you may want to keep it. Otherwise:
+# package-lock.json
+
+# Ruby
+*.gem
+*.rbc
+.bundle/
+vendor/bundle/
+log/
+tmp/
+.sass-cache/
+.rvmrc
+.rbenv-vars
+.byebug_history
+
+# PHP
+vendor/
+
+# .NET
+*.dll
+*.exe
+*.app
+*.builds
+*.cache
+*.ilk
+*.log
+*.mdf
+*.ndf
+*.pdb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+_ReSharper*/
+TFS.Configuration
+_ReSharper.Caches/
+
+# C/C++
+*.o
+*.obj
+*.lo
+*.la
+*.al
+*.libs
+*.dll
+*.so
+*.dylib
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# -------------------------------------------------------------------
+# Dependency / Package Manager Directories
+# -------------------------------------------------------------------
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+
+# pnpm
+.pnpm/
+.pnpm-store/
+
+# Composer (PHP)
+vendor/
+
+# Bundler (Ruby)
+.bundle/
+
+# Flutter
+.flutter-plugins
+.packages
+.pub-cache/
+.buildlog/
+
+# CocoaPods
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# Bower
+bower_components/
+
+# Jekyll / Hugo
+_site/
+public/
+
+# -------------------------------------------------------------------
+# Logs and Persistent Data
+# -------------------------------------------------------------------
+
+*.log
+*.out
+*.pid
+*.seed
+*.pid.lock
+
+# Runtime data
+*.sqlite3
+*.db
+
+# Rollbar / Sentry IDEA caches
+.sentry/
+
+# Crashlytics / Fabric
+fabric/
+crashlytics-build.properties
+
+# HPC / Other tools
+slurm*
+#SBATCH*
+# HTCondor
+*.condor
+
+# -------------------------------------------------------------------
+# Environment Files / Secrets
+# -------------------------------------------------------------------
+
+# dotenv environment variables
+.env
+.env.local
+.env.*.local
+
+# SSL certificates (if generated locally)
+ssl.cert
+ssl.key
+
+# AWS credentials, Terraform state files
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.*
+*.pem
+
+# Vault
+vault.hcl
+
+# -------------------------------------------------------------------
+# Miscellaneous Temporary / Backup Files
+# -------------------------------------------------------------------
+
+telegram_content/
+
+# Mac alias files
+*.app
+
+# Android Studio
+.gradle/
+# Local properties
+local.properties
+# Signing keys
+*.jks
+# Proguard
+/proguard/
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output
+
+# Flutter
+.idea/
+# Generated by Flutter projects
+.flutter-plugins
+.packages
+.pub-cache/
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Unity3D
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+
+# Visual Studio
+.vs/
+# Uncomment if you have Visual Studio project files
+# *.vcxproj.user
+# *.suo
+# *.user
+# *.userosscache
+# *.sln.docstates
+
+# Visual Studio Code extensions (per user)
+.vs-code/
+.history/
+
+# -------------------------------------------------------------------
+# End of .gitignore
+# -------------------------------------------------------------------
