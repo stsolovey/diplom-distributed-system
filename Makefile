@@ -1,4 +1,4 @@
-.PHONY: all build clean test proto docker-up docker-down bench
+.PHONY: all build clean test proto docker-up docker-down bench lint golangci-lint tidy fmt
 
 # Переменные
 GOBASE=$(shell pwd)
@@ -65,4 +65,18 @@ integration-test:
 
 load-test:
 	@chmod +x scripts/load-test.sh
-	@./scripts/load-test.sh 
+	@./scripts/load-test.sh
+
+# Линтер
+lint: golangci-lint
+
+golangci-lint:
+	$(HOME)/go/bin/golangci-lint version
+	$(HOME)/go/bin/golangci-lint run
+
+# Дополнительные команды
+tidy:
+	go mod tidy
+
+fmt:
+	go fmt ./... 

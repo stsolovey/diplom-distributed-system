@@ -1,0 +1,24 @@
+linters:
+  enable-all: true
+
+  disable:
+    - depguard
+    - exhaustive
+    - exhaustruct
+    - varnamelen
+
+    # depricated
+    - tenv
+
+run:
+  timeout: 10m
+  tests: false
+
+linters-settings:
+  tagliatelle:
+    case:
+      rules:
+        yaml: snake
+  gosec:
+    excludes:
+      - G115

@@ -15,25 +15,34 @@ import (
 )
 
 var (
-	messageQueue *queue.MemoryQueue
-	pool         *processor.WorkerPool
+	queueProvider queue.QueueProvider
+	pool          *processor.WorkerPool
 )
 
 func main() {
 	cfg := config.LoadConfig()
 
-	// Создаем очередь
-	messageQueue = queue.NewMemoryQueue(cfg.QueueSize)
+	// Создаем провайдер очереди через фабрику
+	factory := queue.NewQueueFactory(cfg)
+	var err error
+	queueProvider, err = factory.CreateQueueProvider()
+	if err != nil {
+		log.Fatalf("Failed to create queue provider: %v", err)
+	}
+	defer queueProvider.Close()
 
-	// Создаем worker pool
-	pool = processor.NewWorkerPool(cfg.ProcessorWorkers, messageQueue)
+	// Создаем worker pool с унифицированным интерфейсом
+	// Все провайдеры очередей (Memory и NATS) реализуют интерфейс Subscriber
+	pool = processor.NewWorkerPool(cfg.ProcessorWorkers, queueProvider)
 
 	// Контекст для graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Запускаем воркеры
-	pool.Start(ctx)
+	if err := pool.Start(ctx); err != nil {
+		log.Fatalf("Failed to start worker pool: %v", err)
+	}
 
 	// HTTP сервер
 	mux := http.NewServeMux()
@@ -67,8 +76,8 @@ func main() {
 		srv.Shutdown(context.Background())
 	}()
 
-	log.Printf("Processor service starting on port %s with %d workers",
-		cfg.ProcessorPort, cfg.ProcessorWorkers)
+	log.Printf("Processor service starting on port %s with %d workers using %s queue",
+		cfg.ProcessorPort, cfg.ProcessorWorkers, cfg.QueueType)
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
 	}
@@ -88,10 +97,11 @@ func handleEnqueue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := messageQueue.Enqueue(ctx, &msg); err != nil {
+	if err := queueProvider.Publish(ctx, &msg); err != nil {
 		if err == queue.ErrQueueFull {
 			http.Error(w, "Queue is full", http.StatusServiceUnavailable)
 		} else {
+			log.Printf("Failed to enqueue message: %v", err)
 			http.Error(w, "Failed to enqueue message", http.StatusInternalServerError)
 		}
 		return
@@ -109,7 +119,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 // handleStats возвращает статистику
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	poolStats := pool.GetStats()
-	queueStats := messageQueue.Stats()
+	queueStats := queueProvider.Stats()
 
 	stats := map[string]interface{}{
 		"queue": queueStats,

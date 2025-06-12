@@ -2,24 +2,28 @@ package processor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/stsolovey/diplom-distributed-system/internal/models"
-	"github.com/stsolovey/diplom-distributed-system/internal/queue"
 )
+
+// Subscriber интерфейс для получения сообщений
+type Subscriber interface {
+	Subscribe(ctx context.Context) (<-chan *models.DataMessage, error)
+}
 
 // WorkerPool управляет пулом воркеров для обработки сообщений
 type WorkerPool struct {
-	workers int
-	queue   *queue.MemoryQueue
-	wg      sync.WaitGroup
-	results chan *models.ProcessingResult
-	stats   Stats
-	statsMu sync.RWMutex
+	workers    int
+	subscriber Subscriber // унифицированный интерфейс для всех типов очередей
+	wg         sync.WaitGroup
+	results    chan *models.ProcessingResult
+	stats      Stats
+	statsMu    sync.RWMutex
+	msgChan    <-chan *models.DataMessage // канал для получения сообщений
 }
 
 type Stats struct {
@@ -28,23 +32,32 @@ type Stats struct {
 	TotalDuration  time.Duration
 }
 
-// NewWorkerPool создает новый пул воркеров
-func NewWorkerPool(workers int, q *queue.MemoryQueue) *WorkerPool {
+// NewWorkerPool создает новый пул воркеров с унифицированным интерфейсом
+func NewWorkerPool(workers int, subscriber Subscriber) *WorkerPool {
 	return &WorkerPool{
-		workers: workers,
-		queue:   q,
-		results: make(chan *models.ProcessingResult, workers*2),
+		workers:    workers,
+		subscriber: subscriber,
+		results:    make(chan *models.ProcessingResult, workers*2),
 	}
 }
 
 // Start запускает воркеры
-func (wp *WorkerPool) Start(ctx context.Context) {
+func (wp *WorkerPool) Start(ctx context.Context) error {
 	log.Printf("Starting worker pool with %d workers", wp.workers)
+
+	// Создаем подписку через унифицированный интерфейс
+	var err error
+	wp.msgChan, err = wp.subscriber.Subscribe(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to queue: %w", err)
+	}
 
 	for i := 0; i < wp.workers; i++ {
 		wp.wg.Add(1)
 		go wp.runWorker(ctx, i)
 	}
+
+	return nil
 }
 
 // runWorker - основной цикл воркера
@@ -53,15 +66,18 @@ func (wp *WorkerPool) runWorker(ctx context.Context, workerID int) {
 	log.Printf("Worker %d started", workerID)
 
 	for {
-		// Прямой вызов блокирующей операции без лишнего select
-		msg, err := wp.queue.Dequeue(ctx)
-		if err != nil {
-			if errors.Is(err, context.Canceled) || err == queue.ErrQueueClosed {
-				log.Printf("Worker %d stopping", workerID)
+		var msg *models.DataMessage
+
+		// Получаем сообщение из канала подписки
+		select {
+		case msg = <-wp.msgChan:
+			if msg == nil {
+				log.Printf("Worker %d stopping - channel closed", workerID)
 				return
 			}
-			// Другие ошибки - продолжаем работу
-			continue
+		case <-ctx.Done():
+			log.Printf("Worker %d stopping", workerID)
+			return
 		}
 
 		result := wp.processMessage(msg)

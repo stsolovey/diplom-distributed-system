@@ -1,6 +1,28 @@
 version: '3.8'
 
 services:
+  # NATS JetStream service for Phase 2
+  nats:
+    image: nats:2.10-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"  # monitoring
+    command: [
+      "--jetstream",
+      "--store_dir=/data",
+      "--http_port=8222"
+    ]
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "4222"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - diplom-net
+
   api-gateway:
     build:
       context: ..
@@ -56,14 +78,22 @@ services:
       - PROCESSOR_PORT=8082
       - PROCESSOR_WORKERS=4
       - QUEUE_SIZE=1000
+      - QUEUE_TYPE=${QUEUE_TYPE:-memory}  # memory или nats
+      - NATS_URL=${NATS_URL:-nats://nats:4222}
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "8082"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 10s
+    depends_on:
+      nats:
+        condition: service_healthy
     networks:
       - diplom-net
+
+volumes:
+  nats-data:
 
 networks:
   diplom-net:

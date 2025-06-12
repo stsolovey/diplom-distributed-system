@@ -77,6 +77,33 @@ func (q *MemoryQueue) Dequeue(ctx context.Context) (*models.DataMessage, error) 
 	}
 }
 
+// Subscribe реализует интерфейс Subscriber для совместимости с WorkerPool
+func (q *MemoryQueue) Subscribe(ctx context.Context) (<-chan *models.DataMessage, error) {
+	msgChan := make(chan *models.DataMessage, 100)
+
+	go func() {
+		defer close(msgChan)
+		for {
+			msg, err := q.Dequeue(ctx)
+			if err != nil {
+				if err == context.Canceled || err == ErrQueueClosed {
+					return
+				}
+				// При других ошибках продолжаем попытки
+				continue
+			}
+
+			select {
+			case msgChan <- msg:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return msgChan, nil
+}
+
 // Stats возвращает статистику очереди
 func (q *MemoryQueue) Stats() QueueStats {
 	q.mu.RLock()

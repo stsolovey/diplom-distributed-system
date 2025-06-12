@@ -19,6 +19,10 @@ type Config struct {
 
 	// Размер очереди
 	QueueSize int
+
+	// Queue settings
+	QueueType string // "memory" или "nats"
+	NATSURL   string // URL для подключения к NATS
 }
 
 // LoadConfig загружает конфигурацию из переменных окружения
@@ -30,6 +34,9 @@ func LoadConfig() *Config {
 		ProcessorWorkers: getEnvAsInt("PROCESSOR_WORKERS", 4),
 		ProcessorURL:     getEnv("PROCESSOR_URL", "http://localhost:8082"),
 		QueueSize:        getEnvAsInt("QUEUE_SIZE", 1000),
+
+		QueueType: getEnv("QUEUE_TYPE", "memory"),
+		NATSURL:   getEnv("NATS_URL", "nats://localhost:4222"),
 	}
 }
 

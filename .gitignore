@@ -375,7 +375,8 @@ vault.hcl
 # Miscellaneous Temporary / Backup Files
 # -------------------------------------------------------------------
 
-telegram_content/
+# Binaries
+bin/
 
 # Mac alias files
 *.app
