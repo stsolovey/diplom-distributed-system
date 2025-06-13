@@ -433,3 +433,101 @@ make integration-test  # Полный интеграционный тест
 Made with ❤️ for distributed systems learning
 
 </div>
+
+## Архитектура
+
+Система состоит из следующих компонентов:
+- **API Gateway** - маршрутизация запросов
+- **Ingest Service** - прием данных
+- **Processor Service** - обработка сообщений
+
+## Поддерживаемые очереди
+
+Система поддерживает несколько типов очередей сообщений:
+
+### 1. Memory Queue (по умолчанию)
+Встроенная очередь в памяти для разработки и тестирования.
+
+### 2. NATS JetStream
+Легковесная система сообщений для высокопроизводительных приложений.
+
+### 3. Apache Kafka (NEW in Phase 2.5)
+Распределенная платформа потоковой передачи данных для production использования.
+
+## Запуск с разными типами очередей
+
+### Memory Queue
+```bash
+docker-compose -f docker/docker-compose.yml up
+```
+
+### NATS JetStream
+```bash
+QUEUE_TYPE=nats docker-compose -f docker/docker-compose.yml up
+```
+
+### Apache Kafka
+```bash
+QUEUE_TYPE=kafka docker-compose -f docker/docker-compose.yml up
+```
+
+## Настройка Kafka
+
+Kafka интеграция поддерживает следующие переменные окружения:
+
+- `KAFKA_BROKERS` - список брокеров Kafka (по умолчанию: `kafka:29092`)
+- `KAFKA_TOPIC` - топик для сообщений (по умолчанию: `diplom-messages`)
+- `KAFKA_CONSUMER_GROUP` - группа потребителей (по умолчанию: `processor-group`)
+
+Пример:
+```bash
+QUEUE_TYPE=kafka \
+KAFKA_BROKERS=localhost:9092 \
+KAFKA_TOPIC=my-topic \
+KAFKA_CONSUMER_GROUP=my-group \
+docker-compose -f docker/docker-compose.yml up
+```
+
+## Мониторинг
+
+### Grafana Metrics
+Все типы очередей поддерживают базовые метрики:
+- `TotalEnqueued` - количество отправленных сообщений
+- `TotalDequeued` - количество обработанных сообщений
+
+**Примечание для Kafka**: Метрика `CurrentSize` всегда возвращает 0, так как Kafka не предоставляет информацию о количестве необработанных сообщений в очереди.
+
+## Разработка
+
+### Тестирование
+```bash
+# Юнит-тесты
+go test ./...
+
+# Интеграционные тесты (включая Kafka)
+go test -v ./internal/queue/...
+
+# Быстрое тестирование (пропуск интеграционных тестов)
+go test -short ./...
+```
+
+### Линтер
+```bash
+make lint
+```
+
+## Docker
+
+Kafka конфигурация использует KRaft mode (без ZooKeeper) для упрощения развертывания и лучшей производительности.
+
+## Структура проекта
+
+```
+├── cmd/                   # Точки входа приложений
+├── internal/              # Внутренние пакеты
+│   ├── config/           # Конфигурация
+│   ├── queue/            # Провайдеры очередей
+│   └── models/           # Модели данных
+├── docker/               # Docker конфигурация
+└── docs/                 # Документация
+```
