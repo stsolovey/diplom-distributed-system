@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -15,41 +15,55 @@ import (
 	"github.com/stsolovey/diplom-distributed-system/internal/config"
 )
 
+const (
+	clientTimeout      = 3 * time.Second
+	idleConnTimeout    = 30 * time.Second
+	maxIdleConnections = 10
+	serverReadTimeout  = 10 * time.Second
+	serverWriteTimeout = 10 * time.Second
+	healthTimeout      = 2 * time.Second
+)
+
+// ServiceInfo represents a backend service handled by the gateway.
 type ServiceInfo struct {
 	Name     string `json:"name"`
 	Endpoint string `json:"endpoint"`
 	Healthy  bool   `json:"healthy"`
 }
 
+//nolint:gochecknoglobals // dependency injection would create unnecessary boilerplate here.
 var services = []ServiceInfo{
 	{Name: "ingest", Endpoint: getIngestURL()},
 	{Name: "processor", Endpoint: getProcessorURL()},
 }
 
-// httpClientWithTimeout - клиент с таймаутом для health/stats запросов
+// httpClientWithTimeout is an HTTP client tuned for short health/stats requests.
+//
+//nolint:gochecknoglobals // global reuse is intentional to leverage connection pooling.
 var httpClientWithTimeout = &http.Client{
-	Timeout: 3 * time.Second,
+	Timeout: clientTimeout,
 	Transport: &http.Transport{
-		MaxIdleConns:       10,
-		IdleConnTimeout:    30 * time.Second,
-		DisableCompression: true,
+		MaxIdleConns:    maxIdleConnections,
+		IdleConnTimeout: idleConnTimeout,
 	},
 }
 
-// getIngestURL возвращает URL для Ingest сервиса
+// getIngestURL возвращает URL для Ingest сервиса.
 func getIngestURL() string {
 	if url := os.Getenv("INGEST_URL"); url != "" {
 		return url
 	}
-	return "http://localhost:8081" // fallback для локальной разработки
+
+	return "http://localhost:8081" // fallback для локальной разработки.
 }
 
-// getProcessorURL возвращает URL для Processor сервиса
+// getProcessorURL возвращает URL для Processor сервиса.
 func getProcessorURL() string {
 	if url := os.Getenv("PROCESSOR_URL"); url != "" {
 		return url
 	}
-	return "http://localhost:8082" // fallback для локальной разработки
+
+	return "http://localhost:8082" // fallback для локальной разработки.
 }
 
 func main() {
@@ -57,7 +71,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Основные эндпоинты
+	// Основные эндпоинты.
 	mux.HandleFunc("/api/v1/ingest", proxyToIngest)
 	mux.HandleFunc("/api/v1/status", handleSystemStatus)
 	mux.HandleFunc("/health", handleHealth)
@@ -65,69 +79,91 @@ func main() {
 	srv := &http.Server{
 		Addr:         ":" + cfg.APIPort,
 		Handler:      loggingMiddleware(mux),
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  serverReadTimeout,
+		WriteTimeout: serverWriteTimeout,
 	}
 
-	// Graceful shutdown
+	// Graceful shutdown.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
 
 	go func() {
 		<-sigChan
 		log.Println("Shutting down API Gateway...")
-		srv.Shutdown(context.Background())
+
+		if err := srv.Shutdown(context.Background()); err != nil {
+			log.Printf("Error shutting down server: %v", err)
+		}
 	}()
 
 	log.Printf("API Gateway starting on port %s", cfg.APIPort)
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatalf("Server failed: %v", err)
+
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("Server failed: %v", err)
+		os.Exit(1)
 	}
 }
 
-// proxyToIngest проксирует запросы к Ingest сервису
+// proxyToIngest проксирует запросы к Ingest сервису.
 func proxyToIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 
-	// Создаем новый запрос к Ingest сервису
+	// Создаем новый запрос к Ingest сервису.
 	ingestURL := getIngestURL() + "/ingest"
 
-	// Копируем тело запроса
+	// Копируем тело запроса.
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+
 		return
 	}
 	defer r.Body.Close()
 
-	// Отправляем запрос
-	resp, err := http.Post(ingestURL, "application/json", bytes.NewReader(body))
+	// Отправляем запрос.
+	ingestReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, ingestURL, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("Failed to create request to ingest: %v", err)
+		http.Error(w, "Failed to proxy request", http.StatusInternalServerError)
+
+		return
+	}
+
+	ingestReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClientWithTimeout.Do(ingestReq)
 	if err != nil {
 		log.Printf("Failed to proxy to ingest: %v", err)
 		http.Error(w, "Failed to proxy request", http.StatusServiceUnavailable)
+
 		return
 	}
 	defer resp.Body.Close()
 
-	// Копируем ответ
+	// Копируем ответ.
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+
+	if _, err = io.Copy(w, resp.Body); err != nil {
+		log.Printf("Failed to copy response body: %v", err)
+	}
 }
 
-// handleSystemStatus возвращает статус всех сервисов
-func handleSystemStatus(w http.ResponseWriter, r *http.Request) {
+// handleSystemStatus возвращает статус всех сервисов.
+func handleSystemStatus(w http.ResponseWriter, r *http.Request) { //nolint:funlen
 	status := make(map[string]interface{})
 
 	for i, svc := range services {
-		// Проверяем здоровье каждого сервиса с таймаутом
-		healthURL := fmt.Sprintf("%s/health", svc.Endpoint)
+		// Проверяем здоровье каждого сервиса с таймаутом.
+		healthURL := svc.Endpoint + "/health"
 
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		healthReq, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
+		ctx, cancel := context.WithTimeout(r.Context(), healthTimeout)
+		healthReq, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+
 		cancel()
 
 		if err != nil {
@@ -142,22 +178,27 @@ func handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Получаем статистику с таймаутом
-		statsURL := fmt.Sprintf("%s/stats", svc.Endpoint)
+		// Получаем статистику с таймаутом.
+		statsURL := svc.Endpoint + "/stats"
 
-		ctx, cancel = context.WithTimeout(r.Context(), 2*time.Second)
-		statsReq, err := http.NewRequestWithContext(ctx, "GET", statsURL, nil)
+		ctx, cancel = context.WithTimeout(r.Context(), healthTimeout)
+		statsReq, err := http.NewRequestWithContext(ctx, http.MethodGet, statsURL, nil)
+
 		cancel()
 
-		if err == nil {
+		if err == nil { //nolint:nestif
 			statsResp, err := httpClientWithTimeout.Do(statsReq)
 			if err == nil {
 				var stats interface{}
-				json.NewDecoder(statsResp.Body).Decode(&stats)
+				if decodeErr := json.NewDecoder(statsResp.Body).Decode(&stats); decodeErr != nil {
+					log.Printf("Failed to decode stats response: %v", decodeErr)
+				}
+
 				status[svc.Name] = map[string]interface{}{
 					"healthy": services[i].Healthy,
 					"stats":   stats,
 				}
+
 				statsResp.Body.Close()
 			} else {
 				status[svc.Name] = map[string]interface{}{
@@ -175,16 +216,22 @@ func handleSystemStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		log.Printf("Failed to encode status response: %v", err)
+	}
 }
 
-// handleHealth проверка здоровья API Gateway
-func handleHealth(w http.ResponseWriter, r *http.Request) {
+// handleHealth проверка здоровья API Gateway.
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"healthy": true})
+
+	if err := json.NewEncoder(w).Encode(map[string]bool{"healthy": true}); err != nil {
+		log.Printf("Failed to encode health response: %v", err)
+	}
 }
 
-// loggingMiddleware логирует все запросы
+// loggingMiddleware логирует все запросы.
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

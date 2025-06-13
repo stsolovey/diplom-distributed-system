@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/stsolovey/diplom-distributed-system/internal/models"
@@ -13,37 +14,41 @@ var (
 	ErrQueueClosed = errors.New("queue is closed")
 )
 
-// MemoryQueue - потокобезопасная in-memory очередь
+// MemoryQueue - потокобезопасная in-memory очередь.
 type MemoryQueue struct {
 	messages chan *models.DataMessage
 	mu       sync.RWMutex
 	closed   bool
-	stats    QueueStats
+	stats    Stats
 }
 
-type QueueStats struct {
+const memoryQueueBufferSize = 100
+
+// Stats содержит статистику очереди.
+type Stats struct {
 	TotalEnqueued int64
 	TotalDequeued int64
 	CurrentSize   int
 }
 
-// NewMemoryQueue создает новую очередь заданного размера
+// NewMemoryQueue создает новую очередь заданного размера.
 func NewMemoryQueue(size int) *MemoryQueue {
 	return &MemoryQueue{
 		messages: make(chan *models.DataMessage, size),
 	}
 }
 
-// Publish реализует интерфейс Publisher (алиас для Enqueue)
+// Publish реализует интерфейс Publisher (алиас для Enqueue).
 func (q *MemoryQueue) Publish(ctx context.Context, msg *models.DataMessage) error {
 	return q.Enqueue(ctx, msg)
 }
 
-// Enqueue добавляет сообщение в очередь (неблокирующий)
+// Enqueue добавляет сообщение в очередь (неблокирующий).
 func (q *MemoryQueue) Enqueue(ctx context.Context, msg *models.DataMessage) error {
 	q.mu.RLock()
 	if q.closed {
 		q.mu.RUnlock()
+
 		return ErrQueueClosed
 	}
 	q.mu.RUnlock()
@@ -53,43 +58,48 @@ func (q *MemoryQueue) Enqueue(ctx context.Context, msg *models.DataMessage) erro
 		q.mu.Lock()
 		q.stats.TotalEnqueued++
 		q.mu.Unlock()
+
 		return nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("enqueue canceled: %w", ctx.Err())
 	default:
 		return ErrQueueFull
 	}
 }
 
-// Dequeue извлекает сообщение из очереди (блокирующий)
+// Dequeue извлекает сообщение из очереди (блокирующий).
 func (q *MemoryQueue) Dequeue(ctx context.Context) (*models.DataMessage, error) {
 	select {
 	case msg := <-q.messages:
 		if msg == nil {
 			return nil, ErrQueueClosed
 		}
+
 		q.mu.Lock()
 		q.stats.TotalDequeued++
 		q.mu.Unlock()
+
 		return msg, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("dequeue canceled: %w", ctx.Err())
 	}
 }
 
-// Subscribe реализует интерфейс Subscriber для совместимости с WorkerPool
+// Subscribe реализует интерфейс Subscriber для совместимости с WorkerPool.
 func (q *MemoryQueue) Subscribe(ctx context.Context) (<-chan *models.DataMessage, error) {
-	msgChan := make(chan *models.DataMessage, 100)
+	msgChan := make(chan *models.DataMessage, memoryQueueBufferSize)
 
 	go func() {
 		defer close(msgChan)
+
 		for {
 			msg, err := q.Dequeue(ctx)
 			if err != nil {
-				if err == context.Canceled || err == ErrQueueClosed {
+				if errors.Is(err, context.Canceled) || errors.Is(err, ErrQueueClosed) {
 					return
 				}
-				// При других ошибках продолжаем попытки
+
+				// При других ошибках продолжаем попытки.
 				continue
 			}
 
@@ -104,22 +114,25 @@ func (q *MemoryQueue) Subscribe(ctx context.Context) (<-chan *models.DataMessage
 	return msgChan, nil
 }
 
-// Stats возвращает статистику очереди
-func (q *MemoryQueue) Stats() QueueStats {
+// Stats возвращает статистику очереди.
+func (q *MemoryQueue) Stats() Stats {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 	stats := q.stats
 	stats.CurrentSize = len(q.messages)
+
 	return stats
 }
 
-// Close закрывает очередь
+// Close закрывает очередь.
 func (q *MemoryQueue) Close() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
 	if !q.closed {
 		q.closed = true
 		close(q.messages)
 	}
+
 	return nil
 }

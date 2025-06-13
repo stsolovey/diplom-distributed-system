@@ -1,75 +1,89 @@
 package queue
 
 import (
+	"errors"
 	"fmt"
 	"log"
 
 	"github.com/stsolovey/diplom-distributed-system/internal/config"
 )
 
-// QueueProviderType определяет тип провайдера очереди
-type QueueProviderType string
+// ProviderType определяет тип провайдера очереди.
+type ProviderType string
 
 const (
-	MemoryQueueType QueueProviderType = "memory"
-	NATSQueueType   QueueProviderType = "nats"
+	MemoryProviderType ProviderType = "memory"
+	NATSProviderType   ProviderType = "nats"
 )
 
-// QueueFactory создает провайдеры очередей
-type QueueFactory struct {
+// Factory создает провайдеры очередей.
+type Factory struct {
 	config *config.Config
 }
 
-// NewQueueFactory создает новую фабрику очередей
-func NewQueueFactory(cfg *config.Config) *QueueFactory {
-	return &QueueFactory{
+// NewFactory создает новую фабрику очередей.
+func NewFactory(cfg *config.Config) *Factory {
+	return &Factory{
 		config: cfg,
 	}
 }
 
-// CreateQueueProvider создает провайдер очереди на основе конфигурации
-func (f *QueueFactory) CreateQueueProvider() (QueueProvider, error) {
-	queueType := QueueProviderType(f.config.QueueType)
+// revive:disable:ireturn
+// CreateProvider создает провайдер очереди на основе конфигурации.
+func (f *Factory) CreateProvider() (Provider, error) { //nolint:ireturn
+	queueType := ProviderType(f.config.QueueType)
 
 	log.Printf("Creating queue provider of type: %s", queueType)
 
 	switch queueType {
-	case MemoryQueueType:
-		return f.createMemoryQueueProvider()
-	case NATSQueueType:
-		return f.createNATSQueueProvider()
+	case MemoryProviderType:
+		return f.createMemoryProvider()
+	case NATSProviderType:
+		return f.createNATSProvider()
 	default:
-		return nil, fmt.Errorf("unsupported queue type: %s", queueType)
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedQueueType, queueType)
 	}
 }
 
-// createMemoryQueueProvider создает провайдер для in-memory очереди
-func (f *QueueFactory) createMemoryQueueProvider() (QueueProvider, error) {
+// revive:enable:ireturn
+
+// createMemoryProvider создает провайдер для in-memory очереди.
+// revive:disable:ireturn
+func (f *Factory) createMemoryProvider() (Provider, error) { //nolint:ireturn
 	log.Printf("Creating memory queue with size: %d", f.config.QueueSize)
-	return NewMemoryQueueAdapter(f.config.QueueSize), nil
+
+	return NewMemoryAdapter(f.config.QueueSize), nil
 }
 
-// createNATSQueueProvider создает провайдер для NATS очереди
-func (f *QueueFactory) createNATSQueueProvider() (QueueProvider, error) {
+// revive:enable:ireturn
+
+// createNATSProvider создает провайдер для NATS очереди.
+// revive:disable:ireturn
+func (f *Factory) createNATSProvider() (Provider, error) { //nolint:ireturn
 	log.Printf("Creating NATS queue with URL: %s", f.config.NATSURL)
 
-	// Используем стандартный subject "messages" для всех сообщений
+	// Используем стандартный subject "messages" для всех сообщений.
 	adapter, err := NewNATSAdapter(f.config.NATSURL, "messages")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create NATS adapter: %w", err)
 	}
 
 	log.Printf("NATS queue provider created successfully")
+
 	return adapter, nil
 }
 
-// ValidateQueueType проверяет, поддерживается ли данный тип очереди
-func ValidateQueueType(queueType string) error {
-	switch QueueProviderType(queueType) {
-	case MemoryQueueType, NATSQueueType:
+// revive:enable:ireturn
+
+// ValidateProviderType проверяет, поддерживается ли данный тип очереди.
+func ValidateProviderType(queueType string) error {
+	switch ProviderType(queueType) {
+	case MemoryProviderType, NATSProviderType:
 		return nil
 	default:
-		return fmt.Errorf("unsupported queue type: %s. Supported types: %s, %s",
-			queueType, MemoryQueueType, NATSQueueType)
+		return fmt.Errorf("%w: %s. Supported types: %s, %s",
+			ErrUnsupportedQueueType, queueType, MemoryProviderType, NATSProviderType)
 	}
 }
+
+var ErrUnsupportedQueueType = errors.New("unsupported queue type")

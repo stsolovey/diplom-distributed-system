@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -17,7 +18,15 @@ type NATSSubscriber struct {
 	consumer jetstream.Consumer
 }
 
-// NewNATSSubscriber создает subscriber для конкретного subject
+const (
+	natsSubscriberBufferSize      = 100
+	natsSubscriberPullMaxMessages = 10
+	natsSubscriberMaxDeliver      = 3
+	natsSubscriberAckWait         = 30 * time.Second
+	natsSubscriberSleep           = 100 * time.Millisecond
+)
+
+// NewNATSSubscriber создает subscriber для конкретного subject.
 func NewNATSSubscriber(broker *NATSBroker, subject string) (*NATSSubscriber, error) {
 	fullSubject := broker.config.SubjectPrefix + "." + subject
 
@@ -27,8 +36,8 @@ func NewNATSSubscriber(broker *NATSBroker, subject string) (*NATSSubscriber, err
 		Durable:       subject + "-consumer",
 		FilterSubject: fullSubject,
 		AckPolicy:     jetstream.AckExplicitPolicy,
-		MaxDeliver:    3,
-		AckWait:       30 * time.Second,
+		MaxDeliver:    natsSubscriberMaxDeliver,
+		AckWait:       natsSubscriberAckWait,
 	}
 
 	consumer, err := broker.js.CreateOrUpdateConsumer(
@@ -47,13 +56,13 @@ func NewNATSSubscriber(broker *NATSBroker, subject string) (*NATSSubscriber, err
 	}, nil
 }
 
-// Subscribe создает канал для получения сообщений с правильным управлением ресурсами
-func (s *NATSSubscriber) Subscribe(ctx context.Context) (<-chan *models.DataMessage, error) {
-	msgChan := make(chan *models.DataMessage, 100)
+// Subscribe создает канал для получения сообщений с правильным управлением ресурсами.
+func (s *NATSSubscriber) Subscribe(ctx context.Context) (<-chan *models.DataMessage, error) { //nolint:gocognit,cyclop
+	msgChan := make(chan *models.DataMessage, natsSubscriberBufferSize)
 
 	// Создаем pull subscription с back-pressure
 	iter, err := s.consumer.Messages(
-		jetstream.PullMaxMessages(10), // back-pressure: получаем max 10 сообщений за раз
+		jetstream.PullMaxMessages(natsSubscriberPullMaxMessages), // back-pressure: получаем max 10 сообщений за раз
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create message iterator: %w", err)
@@ -71,17 +80,20 @@ func (s *NATSSubscriber) Subscribe(ctx context.Context) (<-chan *models.DataMess
 			default:
 				msg, err := iter.Next()
 				if err != nil {
-					if err == context.Canceled {
+					if errors.Is(err, context.Canceled) {
 						return
 					}
 					// Проверяем timeout ошибки по строковому представлению
 					if err != nil && (err.Error() == "nats: timeout" || err.Error() == "timeout") {
 						// При timeout не спамим логи, просто ждем
-						time.Sleep(100 * time.Millisecond)
+						time.Sleep(natsSubscriberSleep)
+
 						continue
 					}
+
 					log.Printf("Error fetching message: %v", err)
 					time.Sleep(time.Second) // back-off при других ошибках
+
 					continue
 				}
 
@@ -89,7 +101,9 @@ func (s *NATSSubscriber) Subscribe(ctx context.Context) (<-chan *models.DataMess
 				var dataMsg models.DataMessage
 				if err := json.Unmarshal(msg.Data(), &dataMsg); err != nil {
 					log.Printf("Failed to unmarshal message: %v", err)
-					msg.Nak() // negative acknowledgment
+
+					_ = msg.Nak() // Ignore nak error for now
+
 					continue
 				}
 
@@ -110,7 +124,7 @@ func (s *NATSSubscriber) Subscribe(ctx context.Context) (<-chan *models.DataMess
 	return msgChan, nil
 }
 
-// Close останавливает подписку
+// Close останавливает подписку.
 func (s *NATSSubscriber) Close() error {
 	// Consumer автоматически очищается при закрытии соединения
 	return nil

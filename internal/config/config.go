@@ -5,6 +5,11 @@ import (
 	"strconv"
 )
 
+const (
+	defaultProcessorWorkers = 4
+	defaultQueueSize        = 1000
+)
+
 type Config struct {
 	// API Gateway настройки
 	APIPort string
@@ -25,15 +30,15 @@ type Config struct {
 	NATSURL   string // URL для подключения к NATS
 }
 
-// LoadConfig загружает конфигурацию из переменных окружения
+// LoadConfig загружает конфигурацию из переменных окружения.
 func LoadConfig() *Config {
 	return &Config{
 		APIPort:          getEnv("API_PORT", "8080"),
 		IngestPort:       getEnv("INGEST_PORT", "8081"),
 		ProcessorPort:    getEnv("PROCESSOR_PORT", "8082"),
-		ProcessorWorkers: getEnvAsInt("PROCESSOR_WORKERS", 4),
+		ProcessorWorkers: getEnvAsInt("PROCESSOR_WORKERS", defaultProcessorWorkers),
 		ProcessorURL:     getEnv("PROCESSOR_URL", "http://localhost:8082"),
-		QueueSize:        getEnvAsInt("QUEUE_SIZE", 1000),
+		QueueSize:        getEnvAsInt("QUEUE_SIZE", defaultQueueSize),
 
 		QueueType: getEnv("QUEUE_TYPE", "memory"),
 		NATSURL:   getEnv("NATS_URL", "nats://localhost:4222"),
@@ -44,6 +49,7 @@ func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
+
 	return defaultValue
 }
 
@@ -52,5 +58,6 @@ func getEnvAsInt(key string, defaultValue int) int {
 	if value, err := strconv.Atoi(valueStr); err == nil {
 		return value
 	}
+
 	return defaultValue
 }
