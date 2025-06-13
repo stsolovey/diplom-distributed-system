@@ -1,6 +1,51 @@
 version: '3.8'
 
 services:
+  # Kafka in KRaft mode (no ZooKeeper)
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    hostname: kafka
+    container_name: diplom-kafka
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      # KRaft mode (no Zookeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      
+      # Listeners configuration
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      
+      # Storage and replication
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      
+      # JMX for monitoring
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      
+      # Cluster ID (pre-generated)
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - diplom-net
+
   # NATS JetStream service for Phase 2
   nats:
     image: nats:2.10-alpine
@@ -78,8 +123,13 @@ services:
       - PROCESSOR_PORT=8082
       - PROCESSOR_WORKERS=4
       - QUEUE_SIZE=1000
-      - QUEUE_TYPE=${QUEUE_TYPE:-memory}  # memory или nats
+      - QUEUE_TYPE=${QUEUE_TYPE:-memory}  # memory, nats or kafka
       - NATS_URL=${NATS_URL:-nats://nats:4222}
+      - KAFKA_BROKERS=${KAFKA_BROKERS:-kafka:29092}
+      - KAFKA_TOPIC=${KAFKA_TOPIC:-diplom-messages}
+      - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP:-processor-group}
+      - COMPOSITE_PROVIDERS=${COMPOSITE_PROVIDERS:-nats,kafka}
+      - COMPOSITE_STRATEGY=${COMPOSITE_STRATEGY:-fail-fast}
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "8082"]
       interval: 5s
@@ -89,11 +139,14 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
     networks:
       - diplom-net
 
 volumes:
   nats-data:
+  kafka-data:
 
 networks:
   diplom-net:
