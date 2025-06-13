@@ -293,26 +293,25 @@ flowchart TB
     %% Вертикальные детализирующие ветки
     subgraph Details
         direction TB
-        gateway --> lb["Load&nbsp;Balancer<br>(future)"]
-        ingest --> http["HTTP&nbsp;Client"]
-        processor --> pool["Worker&nbsp;Pool<br>(4&nbsp;workers)"]
+        gateway --> lb["Load Balancer<br>(future)"]
+        ingest --> http["HTTP Client"]
+        processor --> pool["Worker Pool<br>(4 workers)"]
     end
 
     %% Кластер очередей
-    subgraph "Queue Cluster"
+    subgraph QueueCluster["Queue Cluster"]
         direction TB
-        memory["Memory<br>(Phase 1)"]
-        nats["NATS JetStream<br>(Phase 2-a)"]
-        kafka["Apache Kafka<br>(Phase 2-b)"]
-        composite["Composite<br>(Dual-Write)"]
+        memory["Memory"]
+        nats["NATS JetStream"]
+        kafka["Apache Kafka"]
+        composite["Composite"]
         
         composite -.-> nats
         composite -.-> kafka
         composite -.-> memory
     end
     
-    pool --> "Queue Cluster"
-    "Queue Cluster" --> pool
+    pool <--> QueueCluster
 ```
 
 ### Поток данных
