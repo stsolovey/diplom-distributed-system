@@ -7,9 +7,8 @@ import (
 	"log"
 	"sync"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/stsolovey/diplom-distributed-system/internal/models"
+	"golang.org/x/sync/errgroup"
 )
 
 var ErrNoProvidersConfigured = errors.New("no providers configured")
