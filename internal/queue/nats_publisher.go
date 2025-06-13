@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/nats-io/nats.go/jetstream"
@@ -14,7 +15,9 @@ type NATSPublisher struct {
 	subject string
 }
 
-// NewNATSPublisher создает publisher для конкретного subject
+var ErrNATSPublisherAck = errors.New("received nil acknowledgment from JetStream")
+
+// NewNATSPublisher создает publisher для конкретного subject.
 func NewNATSPublisher(broker *NATSBroker, subject string) *NATSPublisher {
 	return &NATSPublisher{
 		js:      broker.js,
@@ -22,7 +25,7 @@ func NewNATSPublisher(broker *NATSBroker, subject string) *NATSPublisher {
 	}
 }
 
-// Publish отправляет сообщение в NATS JetStream с гарантией доставки
+// Publish отправляет сообщение в NATS JetStream с гарантией доставки.
 func (p *NATSPublisher) Publish(ctx context.Context, msg *models.DataMessage) error {
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -37,7 +40,7 @@ func (p *NATSPublisher) Publish(ctx context.Context, msg *models.DataMessage) er
 
 	// Проверяем, что сообщение было успешно сохранено в JetStream
 	if ack == nil {
-		return fmt.Errorf("received nil acknowledgment from JetStream")
+		return fmt.Errorf("%w", ErrNATSPublisherAck)
 	}
 
 	// В современной версии NATS JetStream ACK возвращается синхронно

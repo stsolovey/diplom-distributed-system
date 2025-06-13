@@ -375,6 +375,10 @@ vault.hcl
 # Miscellaneous Temporary / Backup Files
 # -------------------------------------------------------------------
 
+# Coverage
+coverage.html
+coverage.out
+
 # Binaries
 bin/
 

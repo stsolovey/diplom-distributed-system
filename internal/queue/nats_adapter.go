@@ -2,11 +2,18 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
 
 	"github.com/stsolovey/diplom-distributed-system/internal/models"
+)
+
+const (
+	natsAdapterBufferSize    = 100
+	natsAdapterMaxReconnects = 5
+	natsAdapterReconnectWait = 2 * time.Second
 )
 
 type NATSAdapter struct {
@@ -20,15 +27,17 @@ type NATSAdapter struct {
 	errors        int64
 }
 
-// NewNATSAdapter создает адаптер для NATS
+var ErrNATSAdapterClose = errors.New("errors closing NATS adapter")
+
+// NewNATSAdapter создает адаптер для NATS.
 func NewNATSAdapter(natsURL, subject string) (*NATSAdapter, error) {
 	// Конфигурация NATS
 	cfg := NATSConfig{
 		URL:           natsURL,
 		StreamName:    "DIPLOM_STREAM",
 		SubjectPrefix: "diplom",
-		MaxReconnects: 5,
-		ReconnectWait: 2 * time.Second,
+		MaxReconnects: natsAdapterMaxReconnects,
+		ReconnectWait: natsAdapterReconnectWait,
 	}
 
 	// Создаем брокер
@@ -44,6 +53,7 @@ func NewNATSAdapter(natsURL, subject string) (*NATSAdapter, error) {
 	subscriber, err := NewNATSSubscriber(broker, subject)
 	if err != nil {
 		broker.Close()
+
 		return nil, fmt.Errorf("failed to create NATS subscriber: %w", err)
 	}
 
@@ -54,39 +64,43 @@ func NewNATSAdapter(natsURL, subject string) (*NATSAdapter, error) {
 	}, nil
 }
 
-// Publish реализует интерфейс Publisher
+// Publish реализует интерфейс Publisher.
 func (a *NATSAdapter) Publish(ctx context.Context, msg *models.DataMessage) error {
 	err := a.publisher.Publish(ctx, msg)
-
 	if err != nil {
 		atomic.AddInt64(&a.errors, 1)
+
 		return err
 	}
 
 	// Увеличиваем счетчик только после успешного ACK от JetStream
 	atomic.AddInt64(&a.totalEnqueued, 1)
+
 	return nil
 }
 
-// Subscribe реализует интерфейс Subscriber
+// Subscribe реализует интерфейс Subscriber.
 func (a *NATSAdapter) Subscribe(ctx context.Context) (<-chan *models.DataMessage, error) {
 	msgChan, err := a.subscriber.Subscribe(ctx)
 	if err != nil {
 		atomic.AddInt64(&a.errors, 1)
+
 		return nil, err
 	}
 
 	// Оборачиваем канал для подсчета статистики
-	wrappedChan := make(chan *models.DataMessage, 100)
+	wrappedChan := make(chan *models.DataMessage, natsAdapterBufferSize)
 
 	go func() {
 		defer close(wrappedChan)
+
 		for {
 			select {
 			case msg, ok := <-msgChan:
 				if !ok {
 					return
 				}
+
 				atomic.AddInt64(&a.totalDequeued, 1)
 
 				select {
@@ -103,16 +117,16 @@ func (a *NATSAdapter) Subscribe(ctx context.Context) (<-chan *models.DataMessage
 	return wrappedChan, nil
 }
 
-// Stats возвращает статистику NATS
-func (a *NATSAdapter) Stats() QueueStats {
-	return QueueStats{
+// Stats возвращает статистику адаптера.
+func (a *NATSAdapter) Stats() Stats {
+	return Stats{
 		TotalEnqueued: atomic.LoadInt64(&a.totalEnqueued),
 		TotalDequeued: atomic.LoadInt64(&a.totalDequeued),
-		CurrentSize:   -1, // JetStream не предоставляет точный размер очереди
+		CurrentSize:   -1, // JetStream не предоставляет точный размер очереди.
 	}
 }
 
-// Close закрывает адаптер
+// Close закрывает адаптер.
 func (a *NATSAdapter) Close() error {
 	var errs []error
 
@@ -125,7 +139,7 @@ func (a *NATSAdapter) Close() error {
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("errors closing NATS adapter: %v", errs)
+		return fmt.Errorf("%w: %v", ErrNATSAdapterClose, errs)
 	}
 
 	return nil

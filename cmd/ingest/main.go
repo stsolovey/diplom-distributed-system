@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -16,9 +17,11 @@ import (
 	"github.com/stsolovey/diplom-distributed-system/internal/models"
 )
 
-var (
-	processorClient *client.ProcessorClient
-	stats           IngestStats
+const (
+	shutdownTimeout = 5 * time.Second
+	readTimeout     = 10 * time.Second
+	writeTimeout    = 10 * time.Second
+	requestTimeout  = 5 * time.Second
 )
 
 type IngestStats struct {
@@ -27,7 +30,7 @@ type IngestStats struct {
 	TotalFailed   atomic.Int64
 }
 
-// GetStats возвращает текущую статистику в JSON-совместимом формате
+// GetStats возвращает текущую статистику в JSON-совместимом формате.
 func (s *IngestStats) GetStats() map[string]int64 {
 	return map[string]int64{
 		"TotalReceived": s.TotalReceived.Load(),
@@ -36,36 +39,43 @@ func (s *IngestStats) GetStats() map[string]int64 {
 	}
 }
 
-// IngestRequest представляет входящий запрос
+// IngestRequest представляет входящий запрос.
 type IngestRequest struct {
 	Source   string            `json:"source"`
 	Data     string            `json:"data"`
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
-// IngestResponse представляет ответ сервиса
+// IngestResponse представляет ответ сервиса.
 type IngestResponse struct {
-	MessageID string `json:"message_id"`
+	MessageID string `json:"messageId"`
 	Status    string `json:"status"`
+}
+
+type App struct {
+	processorClient *client.ProcessorClient
+	stats           *IngestStats
 }
 
 func main() {
 	cfg := config.LoadConfig()
 
-	// Создаем клиент для отправки в Processor
-	processorClient = client.NewProcessorClient(cfg.ProcessorURL)
+	app := &App{
+		processorClient: client.NewProcessorClient(cfg.ProcessorURL),
+		stats:           &IngestStats{},
+	}
 
 	// HTTP сервер
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ingest", handleIngest)
+	mux.HandleFunc("/ingest", app.handleIngest)
 	mux.HandleFunc("/health", handleHealth)
-	mux.HandleFunc("/stats", handleStats)
+	mux.HandleFunc("/stats", app.handleStats)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.IngestPort,
 		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 	}
 
 	// Graceful shutdown
@@ -75,29 +85,40 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Println("Shutting down ingest service...")
-		srv.Shutdown(context.Background())
+
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+
+		defer cancel()
+
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("Error shutting down server: %v", err)
+		}
 	}()
 
 	log.Printf("Ingest service starting on port %s", cfg.IngestPort)
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatalf("Server failed: %v", err)
+
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("Server failed: %v", err)
+		os.Exit(1)
 	}
 }
 
-// handleIngest обрабатывает входящие данные
-func handleIngest(w http.ResponseWriter, r *http.Request) {
+// handleIngest обрабатывает входящие данные.
+func (app *App) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
 		return
 	}
 
 	var req IngestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+
 		return
 	}
 
-	stats.TotalReceived.Add(1)
+	app.stats.TotalReceived.Add(1)
 
 	// Создаем сообщение
 	msg := &models.DataMessage{
@@ -109,36 +130,46 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Отправляем в Processor
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 	defer cancel()
 
-	if err := processorClient.SendMessage(ctx, msg); err != nil {
-		stats.TotalFailed.Add(1)
+	if err := app.processorClient.SendMessage(ctx, msg); err != nil {
+		app.stats.TotalFailed.Add(1)
 		log.Printf("Failed to send message to processor: %v", err)
 		http.Error(w, "Failed to process message", http.StatusServiceUnavailable)
+
 		return
 	}
 
-	stats.TotalSent.Add(1)
+	app.stats.TotalSent.Add(1)
 
 	// Отправляем ответ
 	resp := IngestResponse{
-		MessageID: msg.Id,
+		MessageID: msg.GetId(),
 		Status:    "accepted",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("Failed to encode response: %v", err)
+	}
 }
 
-// handleHealth проверка здоровья сервиса
-func handleHealth(w http.ResponseWriter, r *http.Request) {
+// handleHealth проверка здоровья сервиса.
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"healthy": true})
+
+	if err := json.NewEncoder(w).Encode(map[string]bool{"healthy": true}); err != nil {
+		log.Printf("Failed to encode health response: %v", err)
+	}
 }
 
-// handleStats возвращает статистику
-func handleStats(w http.ResponseWriter, r *http.Request) {
+// handleStats возвращает статистику.
+func (app *App) handleStats(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats.GetStats())
+
+	if err := json.NewEncoder(w).Encode(app.stats.GetStats()); err != nil {
+		log.Printf("Failed to encode stats response: %v", err)
+	}
 }
