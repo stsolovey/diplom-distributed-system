@@ -21,6 +21,7 @@
 - [Тестирование](#-тестирование)
 - [Качество кода](#-качество-кода)
 - [Производительность](#-производительность)
+- [Профилирование](#-профилирование)
 - [Развертывание](#-развертывание)
 
 ## 🚀 Быстрый старт
@@ -95,6 +96,7 @@ make build
 ./bin/api-gateway --help || echo "API Gateway ready"
 ./bin/ingest --help || echo "Ingest ready"  
 ./bin/processor --help || echo "Processor ready"
+./bin/grpc-server --help || echo "gRPC Server ready"
 ```
 
 ## 🔄 Поддерживаемые очереди
@@ -281,30 +283,50 @@ Health check Ingest.
 #### `GET /health`
 Health check Processor.
 
+### gRPC Service (`:50052`)
+
+#### `rpc Ingest(IngestRequest) returns (IngestResponse)`
+Прием данных через gRPC протокол.
+
+#### `rpc IngestStream(stream IngestRequest) returns (IngestResponse)`
+Потоковый прием данных через gRPC.
+
+**Пример использования:**
+```bash
+# Запуск gRPC сервера
+make grpc-server && ./bin/grpc-server
+
+# Тестирование через grpcurl (если установлен)
+grpcurl -plaintext -d '{"source":"grpc-test","data":"Hello gRPC"}' \
+  localhost:50052 IngestService/Ingest
+```
+
 ## 🏗️ Архитектура
 
 ```mermaid
 flowchart TB
     %% Core chain
-    client[Client] --> gateway["API Gateway<br>:8080"]
+    client[Client] --> gateway["API Gateway<br>:8080<br>(HTTP/2 + TLS)"]
+    grpc_client[gRPC Client] --> grpc_server["gRPC Server<br>:50052"]
     gateway --> ingest["Ingest<br>:8081"]
-    ingest --> processor["Processor<br>:8082"]
+    grpc_server --> processor["Processor<br>:8082"]
+    ingest --> processor
 
     %% Вертикальные детализирующие ветки
     subgraph Details
         direction TB
-        gateway --> lb["Load Balancer<br>(future)"]
-        ingest --> http["HTTP Client"]
-        processor --> pool["Worker Pool<br>(4 workers)"]
+        gateway --> lb["Load Balancer<br>(Phase 4)"]
+        ingest --> http["Optimized HTTP Client<br>(Connection Pool)"]
+        processor --> pool["Worker Pool<br>(4 workers)<br>Object Pooling"]
     end
 
     %% Кластер очередей
     subgraph QueueCluster["Queue Cluster"]
         direction TB
-        memory["Memory"]
+        memory["Memory<br>(8x optimized)"]
         nats["NATS JetStream"]
         kafka["Apache Kafka"]
-        composite["Composite"]
+        composite["Composite<br>(Dual-Write)"]
         
         composite -.-> nats
         composite -.-> kafka
@@ -316,13 +338,20 @@ flowchart TB
 
 ### Поток данных
 
-1. **Client** отправляет HTTP POST запрос в **API Gateway**
+#### HTTP Path (Phase 1-2)
+1. **Client** отправляет HTTP POST запрос в **API Gateway** (HTTP/2 + TLS)
 2. **API Gateway** проксирует запрос в **Ingest** сервис
-3. **Ingest** создает сообщение и отправляет в **Processor** через HTTP
+3. **Ingest** создает сообщение и отправляет в **Processor** через оптимизированный HTTP клиент
+
+#### gRPC Path (Phase 3)
+1. **gRPC Client** отправляет запрос напрямую в **gRPC Server**
+2. **gRPC Server** обрабатывает protobuf сообщения и передает в **Processor**
+
+#### Processing (All Phases)
 4. **Processor** добавляет сообщение в очередь (Memory/NATS/Kafka/Composite)
-5. **Worker Pool** обрабатывает сообщения из очереди асинхронно
+5. **Worker Pool** с object pooling обрабатывает сообщения асинхронно (8x быстрее)
 6. **Composite Adapter** может дублировать сообщения в несколько очередей
-7. Статистики и health checks доступны на всех уровнях
+7. Статистики, профилирование и health checks доступны на всех уровнях
 
 ## 🛠️ Команды Make
 
@@ -331,6 +360,7 @@ flowchart TB
 | `make all` | Генерация protobuf + сборка |
 | `make build` | Сборка всех сервисов в `bin/` |
 | `make proto` | Генерация `.pb.go` файлов |
+| `make grpc-server` | Сборка gRPC сервера |
 | `make clean` | Очистка артефактов сборки |
 | `make run-local` | Запуск всех сервисов локально |
 | `make switch-queue QUEUE=nats` | Быстрое переключение типа очереди |
@@ -340,6 +370,8 @@ flowchart TB
 | `make bench` | Бенчмарки производительности |
 | `make integration-test` | Сквозной тест (все 4 типа очередей) |
 | `make load-test` | Нагрузочный тест (ApacheBench) |
+| `make profile-complete` | Полное профилирование (CPU/Memory/Block/Mutex) |
+| `make test-network` | Тестирование сетевых оптимизаций |
 | **Docker** |
 | `make docker-build` | Сборка Docker образов |
 | `make docker-up` | Запуск через docker-compose |
@@ -439,6 +471,14 @@ Closes #123"
 
 *Условия: локальное тестирование, 4 vCPU, 4 worker'а*
 
+### Оптимизации Phase 3 ✅
+- **8x улучшение производительности**: Memory Queue оптимизирована с object pooling
+- **HTTP/2 + gRPC**: Поддержка современных протоколов
+- **Connection Pooling**: Эффективное переиспользование соединений
+- **Профилирование**: Комплексные скрипты для анализа производительности
+
+📊 **Подробные отчеты**: [docs/profiling/PHASE3_COMPLETE.md](docs/profiling/PHASE3_COMPLETE.md)
+
 ### Мониторинг
 ```bash
 # Получение метрик в реальном времени
@@ -455,6 +495,42 @@ curl -s http://localhost:8082/stats | jq '.queue.composite_stats'
 - **Kafka адаптер**: не отдаёт `CurrentSize` (размер топика недоступен)
 - **Composite stats**: агрегируют метрики всех дочерних брокеров
 - **NATS JetStream**: показывает размер stream'а в реальном времени
+
+## 🔬 Профилирование
+
+### Комплексное профилирование
+```bash
+make profile-complete
+# Генерирует CPU, Memory, Block и Mutex профили
+# Результаты сохраняются в results/profiling/
+```
+
+### Доступные скрипты
+| Скрипт | Назначение |
+|--------|------------|
+| `scripts/profile.sh` | Базовое CPU профилирование |
+| `scripts/complete_profiling.sh` | Полный анализ производительности |
+| `scripts/load_test.sh` | Нагрузочное тестирование с ApacheBench |
+
+### Результаты оптимизации
+- **BenchmarkWorkerPool**: 414,175 ops @ 2,843 ns/op
+- **BenchmarkMemoryQueue**: 3,419,470 ops @ 356.7 ns/op (8x улучшение)
+- **Memory allocations**: Снижение на 36% (240B → 152B per op)
+- **GC pressure**: Уменьшение на 40% благодаря object pooling
+
+### Анализ профилей
+```bash
+# Просмотр CPU профиля
+go tool pprof results/profiling/complete/cpu_processor.prof
+
+# Анализ памяти
+go tool pprof results/profiling/complete/mem_processor.prof
+
+# Web интерфейс
+go tool pprof -http=:8080 results/profiling/complete/cpu_processor.prof
+```
+
+📊 **Подробный анализ**: [docs/profiling/](docs/profiling/)
 
 ## 🚀 Развертывание
 
@@ -473,7 +549,7 @@ export PROCESSOR_WORKERS=8
 make docker-up
 ```
 
-### Kubernetes (Phase 3)
+### Kubernetes (Phase 4)
 Планируется поддержка Helm charts и Kubernetes deployments.
 
 ### Health Checks
@@ -485,21 +561,29 @@ make docker-up
 
 ```
 ├── cmd/                    # Точки входа сервисов
-│   ├── api-gateway/       # HTTP Gateway (порт 8080)
+│   ├── api-gateway/       # HTTP Gateway (порт 8080) + HTTP/2 support
+│   ├── grpc-server/       # gRPC Service (порт 50052)
 │   ├── ingest/            # Data Ingest Service (порт 8081)  
 │   └── processor/         # Message Processor (порт 8082)
 ├── internal/              # Внутренние пакеты
-│   ├── client/           # HTTP клиенты
+│   ├── client/           # HTTP клиенты (optimized + traced)
 │   ├── config/           # Конфигурация
+│   ├── grpc/             # gRPC server implementation
 │   ├── models/           # Protobuf модели
-│   ├── processor/        # Worker pool implementation
+│   ├── processor/        # Worker pool implementation (optimized)
 │   └── queue/            # Очереди (Memory, NATS, Kafka, Composite)
 │       ├── kafka_*.go    # Kafka provider implementation
-│       └── composite_*.go # Composite dual-write adapter
+│       ├── composite_*.go # Composite dual-write adapter
+│       └── memory_queue_optimized.go # Object pooling optimization
 ├── api/proto/            # Protobuf определения
 ├── docker/               # Docker конфигурации
 ├── scripts/              # Скрипты автоматизации
+│   ├── complete_profiling.sh # Комплексное профилирование
+│   ├── load_test.sh      # Нагрузочное тестирование
+│   └── profile.sh        # Базовое профилирование
 ├── docs/                 # Дополнительная документация
+│   └── profiling/        # Отчеты по производительности
+├── results/              # Результаты профилирования и тестов
 └── bin/                  # Скомпилированные бинарники
 ```
 
@@ -519,15 +603,26 @@ make docker-up
 - [x] Comprehensive тестирование (testcontainers)
 - [x] Factory pattern для всех провайдеров
 
-### Phase 3 (🚧 В планах)
-- [ ] Оптимизация и Observability
-- [ ] Metrics (Prometheus/Grafana)
-- [ ] Distributed Tracing (Jaeger)
-- [ ] Kubernetes deployment + Helm
-- [ ] Горизонтальное масштабирование
-- [ ] Circuit breakers и rate limiting
+### Phase 3 (✅ Завершена)
+- [x] **Профилирование и оптимизация**: 8x улучшение производительности
+- [x] **gRPC Service**: Полная реализация с protobuf
+- [x] **HTTP/2 Gateway**: Современный протокол с TLS
+- [x] **Connection Pooling**: Оптимизированные HTTP клиенты
+- [x] **Object Pooling**: Снижение GC pressure на 40%
+- [x] **Comprehensive Benchmarking**: Скрипты профилирования
+- [x] **Network Optimizations**: Traced clients с httptrace
 
-Подробности в [docs/ФАЗА_2_5.md](docs/ФАЗА_2_5.md)
+📊 **Отчет**: [docs/profiling/PHASE3_COMPLETE.md](docs/profiling/PHASE3_COMPLETE.md)
+
+### Phase 4 (🚧 В планах)
+- [ ] **Нагрузочное тестирование**: k6 scenarios (smoke, load, spike)
+- [ ] **Observability**: Metrics (Prometheus/Grafana)
+- [ ] **Distributed Tracing**: Jaeger integration
+- [ ] **Kubernetes deployment**: Helm charts
+- [ ] **Горизонтальное масштабирование**: Auto-scaling
+- [ ] **Resilience**: Circuit breakers и rate limiting
+
+Подробности в [docs/0. PRACTICAL_PART_PLAN.md](docs/0.%20PRACTICAL_PART_PLAN.md)
 
 ## 🤝 Contributing
 
