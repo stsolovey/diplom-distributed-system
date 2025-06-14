@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -74,5 +75,56 @@ func TestMemoryQueue_Stats(t *testing.T) {
 	stats = q.Stats()
 	if stats.TotalEnqueued != 1 || stats.CurrentSize != 1 {
 		t.Error("Stats not updated after enqueue")
+	}
+}
+
+func BenchmarkMemoryQueue_EnqueueDequeue(b *testing.B) {
+	q := NewMemoryQueue(1000) // Достаточно большая очередь
+	defer q.Close()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			i++
+			msg := &models.DataMessage{
+				Id:      fmt.Sprintf("bench-%d", i),
+				Payload: []byte("benchmark data"),
+			}
+
+			// Enqueue
+			err := q.Enqueue(context.Background(), msg)
+			if err != nil {
+				b.Fatalf("Failed to enqueue: %v", err)
+			}
+
+			// Dequeue
+			_, err = q.Dequeue(context.Background())
+			if err != nil {
+				b.Fatalf("Failed to dequeue: %v", err)
+			}
+		}
+	})
+}
+
+func BenchmarkMemoryQueue_EnqueueOnly(b *testing.B) {
+	q := NewMemoryQueue(b.N + 1000) // Достаточно места для всех сообщений
+	defer q.Close()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		msg := &models.DataMessage{
+			Id:      fmt.Sprintf("bench-%d", i),
+			Payload: []byte("benchmark data"),
+		}
+
+		err := q.Enqueue(context.Background(), msg)
+		if err != nil {
+			b.Fatalf("Failed to enqueue: %v", err)
+		}
 	}
 }

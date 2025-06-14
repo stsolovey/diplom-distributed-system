@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -60,38 +61,74 @@ func TestWorkerPool_ProcessMessages(t *testing.T) {
 }
 
 func BenchmarkWorkerPool(b *testing.B) {
-	q := queue.NewMemoryQueue(1000)
-	pool := NewWorkerPool(4, q)
-
-	// Создаем контекст для воркеров
+	// Создаем контекст с отменой
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool.Start(ctx)
+	// Создаем очередь и пул
+	queueSize := b.N
+	if queueSize < 1000 {
+		queueSize = 1000
+	}
 
-	// Создаем горутину для чтения результатов чтобы воркеры не блокировались
+	memQueue := queue.NewMemoryQueue(queueSize)
+	pool := NewWorkerPool(4, memQueue)
+
+	// Предзаполняем очередь
+	for i := 0; i < b.N; i++ {
+		msg := &models.DataMessage{
+			Id:        fmt.Sprintf("bench-%d", i),
+			Timestamp: time.Now().Unix(),
+			Source:    "benchmark",
+			Payload:   []byte("test payload for benchmarking"),
+		}
+		if err := memQueue.Publish(ctx, msg); err != nil {
+			b.Fatalf("Failed to enqueue: %v", err)
+		}
+	}
+
+	// Запускаем пул
+	if err := pool.Start(ctx); err != nil {
+		b.Fatalf("Failed to start pool: %v", err)
+	}
+
+	// Сброс таймера после подготовки
+	b.ResetTimer()
+
+	// Считаем обработанные сообщения
+	var processed int
+	var mu sync.Mutex
+	done := make(chan struct{})
+
 	go func() {
 		for range pool.Results() {
-			// Просто читаем результаты для предотвращения блокировки
+			mu.Lock()
+			processed++
+			if processed >= b.N {
+				close(done)
+				mu.Unlock()
+				return
+			}
+			mu.Unlock()
 		}
 	}()
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		msg := &models.DataMessage{
-			Id:      fmt.Sprintf("bench-%d", i),
-			Payload: []byte("benchmark data"),
-		}
-		q.Enqueue(ctx, msg)
-	}
-
-	// Wait for all messages to be processed
-	for pool.GetStats().ProcessedCount < int64(b.N) {
-		time.Sleep(time.Millisecond)
+	// Ждем завершения с таймаутом
+	select {
+	case <-done:
+		// Успешно обработали все
+	case <-time.After(30 * time.Second):
+		mu.Lock()
+		b.Fatalf("Timeout: processed only %d/%d messages", processed, b.N)
+		mu.Unlock()
 	}
 
 	b.StopTimer()
-	cancel() // Отменяем контекст для graceful shutdown
+
+	// Останавливаем пул
+	cancel()
 	pool.Stop()
+
+	// Логируем производительность
+	b.Logf("Processed %d messages", b.N)
 }

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package diplom.v1;
+
+option go_package = "github.com/stsolovey/diplom-distributed-system/internal/grpc";
+
+service IngestService {
+    rpc Ingest(IngestRequest) returns (IngestResponse);
+    rpc IngestStream(stream IngestRequest) returns (IngestResponse);
+}
+
+message IngestRequest {
+    string source = 1;
+    bytes data = 2;
+    map<string, string> metadata = 3;
+}
+
+message IngestResponse {
+    string message_id = 1;
+    string status = 2;
+} 

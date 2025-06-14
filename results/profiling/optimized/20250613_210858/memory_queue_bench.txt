@@ -1,0 +1,8 @@
+goos: linux
+goarch: amd64
+pkg: github.com/stsolovey/diplom-distributed-system/internal/queue
+cpu: AMD Ryzen 7 5800H with Radeon Graphics         
+BenchmarkMemoryQueue_EnqueueDequeue-16    	 9882914	       371.9 ns/op	     152 B/op	       4 allocs/op
+BenchmarkMemoryQueue_EnqueueOnly-16       	17947114	       195.2 ns/op	     152 B/op	       3 allocs/op
+PASS
+ok  	github.com/stsolovey/diplom-distributed-system/internal/queue	8.017s

@@ -74,6 +74,22 @@ golangci-lint:
 	$(HOME)/go/bin/golangci-lint version
 	$(HOME)/go/bin/golangci-lint run
 
+# Профилирование
+profile-complete:
+	@chmod +x scripts/complete_profiling.sh
+	@./scripts/complete_profiling.sh
+
+# gRPC команды
+grpc-server:
+	@echo "Building gRPC server..."
+	@go build -o $(GOBIN)/grpc-server ./cmd/grpc-server
+
+# Сетевые тесты
+test-network:
+	@echo "Testing network optimizations..."
+	@go test -v -run TestOptimizedClient ./internal/client
+	@go test -v -run TestTracedClient ./internal/client
+
 # Дополнительные команды
 tidy:
 	go mod tidy
