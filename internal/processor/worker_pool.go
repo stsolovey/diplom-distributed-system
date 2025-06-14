@@ -11,9 +11,6 @@ import (
 )
 
 const (
-	// workSimulationDelay defines how long we sleep to emulate work during processing.
-	workSimulationDelay = 10 * time.Millisecond
-
 	// resultsBufferMultiplier defines how many extra slots the results channel has per worker.
 	resultsBufferMultiplier = 2
 )
@@ -107,7 +104,7 @@ func (wp *WorkerPool) processMessage(msg *models.DataMessage) *models.Processing
 	start := time.Now()
 
 	// Имитация обработки (в реальной системе здесь будет бизнес-логика)
-	time.Sleep(workSimulationDelay) // Симуляция работы
+	// time.Sleep(workSimulationDelay) // REMOVED FOR PERFORMANCE - artificial delay.
 
 	// Простая обработка: добавляем префикс к payload
 	processedData := "PROCESSED_" + string(msg.GetPayload())

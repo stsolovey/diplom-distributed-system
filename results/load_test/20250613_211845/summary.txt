@@ -1,0 +1,10 @@
+Load Test Results
+================
+Date: Fri Jun 13 21:18:47 MSK 2025
+Requests: 1000
+Concurrency: 20
+Total time: s
+Successful requests: 1000
+Failed requests: 0
+Requests per second: 
+Average latency: 0ms

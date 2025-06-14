@@ -36,9 +36,8 @@ func NewFactory(cfg *config.Config) *Factory {
 	}
 }
 
-// revive:disable:ireturn
 // CreateProvider creates a queue provider based on configuration.
-func (f *Factory) CreateProvider() (Provider, error) { //nolint:ireturn
+func (f *Factory) CreateProvider() (Provider, error) { //nolint:ireturn // factory pattern
 	queueType := ProviderType(f.config.QueueType)
 
 	log.Printf("Creating queue provider of type: %s", queueType)
@@ -57,21 +56,15 @@ func (f *Factory) CreateProvider() (Provider, error) { //nolint:ireturn
 	}
 }
 
-// revive:enable:ireturn
-
 // createMemoryProvider creates a provider for in-memory queue.
-// revive:disable:ireturn
-func (f *Factory) createMemoryProvider() (Provider, error) { //nolint:ireturn
+func (f *Factory) createMemoryProvider() (Provider, error) { //nolint:ireturn // factory pattern
 	log.Printf("Creating memory queue with size: %d", f.config.QueueSize)
 
 	return NewMemoryAdapter(f.config.QueueSize), nil
 }
 
-// revive:enable:ireturn
-
 // createNATSProvider creates a provider for NATS queue.
-// revive:disable:ireturn
-func (f *Factory) createNATSProvider() (Provider, error) { //nolint:ireturn
+func (f *Factory) createNATSProvider() (Provider, error) { //nolint:ireturn // factory pattern
 	log.Printf("Creating NATS queue with URL: %s", f.config.NATSURL)
 
 	// Use standard subject "messages" for all messages.
@@ -85,11 +78,8 @@ func (f *Factory) createNATSProvider() (Provider, error) { //nolint:ireturn
 	return adapter, nil
 }
 
-// revive:enable:ireturn
-
 // createKafkaProvider creates a provider for Kafka queue.
-// revive:disable:ireturn
-func (f *Factory) createKafkaProvider() (Provider, error) { //nolint:ireturn
+func (f *Factory) createKafkaProvider() (Provider, error) { //nolint:ireturn // factory pattern
 	log.Printf("Creating Kafka queue with brokers: %v, topic: %s, consumer group: %s",
 		f.config.KafkaBrokers, f.config.KafkaTopic, f.config.KafkaConsumerGroup)
 
@@ -103,11 +93,8 @@ func (f *Factory) createKafkaProvider() (Provider, error) { //nolint:ireturn
 	return adapter, nil
 }
 
-// revive:enable:ireturn
-
 // createCompositeProvider creates a provider for composite (dual-write) queue.
-// revive:disable:ireturn
-func (f *Factory) createCompositeProvider() (Provider, error) { //nolint:ireturn
+func (f *Factory) createCompositeProvider() (Provider, error) { //nolint:ireturn // factory pattern
 	log.Printf("Creating composite queue with providers: %v, strategy: %s",
 		f.config.CompositeProviders, f.config.CompositeStrategy)
 
@@ -146,8 +133,8 @@ func (f *Factory) createProviders(providerTypes []string) ([]Provider, error) {
 	return providers, nil
 }
 
-// revive:disable:ireturn
-func (f *Factory) createSingleProvider(providerType ProviderType) (Provider, error) { //nolint:ireturn
+//nolint:ireturn // factory pattern
+func (f *Factory) createSingleProvider(providerType ProviderType) (Provider, error) {
 	switch providerType {
 	case MemoryProviderType:
 		return NewMemoryAdapter(f.config.QueueSize), nil
@@ -169,8 +156,6 @@ func (f *Factory) createSingleProvider(providerType ProviderType) (Provider, err
 		return nil, fmt.Errorf("unsupported provider type in composite: %s: %w", providerType, ErrUnsupportedQueueType)
 	}
 }
-
-// revive:enable:ireturn
 
 func (f *Factory) parseCompositeStrategy(strategyStr string) (CompositeStrategy, error) {
 	switch strategyStr {
