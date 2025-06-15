@@ -1,0 +1,148 @@
+groups:
+  - name: system_alerts
+    rules:
+      # Высокая загрузка CPU
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for instance {{ $labels.instance }}"
+
+      # Высокое использование памяти
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 85% for instance {{ $labels.instance }}"
+
+      # Высокая загрузка диска
+      - alert: HighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High disk usage detected"
+          description: "Disk usage is above 90% for {{ $labels.device }} on {{ $labels.instance }}"
+
+  - name: application_alerts
+    rules:
+      # Сервис недоступен
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service is down"
+          description: "Service {{ $labels.job }} on {{ $labels.instance }} is down"
+
+      # Высокий error rate (более 5%)
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) * 100 > 5
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }}% for {{ $labels.job }}"
+
+      # Высокая latency (p95 > 200ms)
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 0.2
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected"
+          description: "95th percentile latency is {{ $value }}s for {{ $labels.job }}"
+
+      # Очередь переполнена
+      - alert: QueueOverflow
+        expr: queue_size / queue_capacity * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Queue is near capacity"
+          description: "Queue utilization is {{ $value }}% for {{ $labels.job }}"
+
+      # Большое количество сообщений в очереди
+      - alert: LargeQueueBacklog
+        expr: queue_current_size > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large queue backlog detected"
+          description: "Queue has {{ $value }} messages pending for {{ $labels.job }}"
+
+  - name: load_test_alerts
+    rules:
+      # Throughput ниже ожидаемого
+      - alert: LowThroughput
+        expr: rate(http_requests_total[1m]) * 60 < 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Throughput below expected"
+          description: "Current throughput is {{ $value }} req/min, expected > 300"
+
+      # Memory leak индикатор
+      - alert: PossibleMemoryLeak
+        expr: increase(go_memstats_heap_inuse_bytes[30m]) > 100 * 1024 * 1024
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Possible memory leak detected"
+          description: "Heap memory increased by {{ $value | humanize1024 }}B in 30 minutes"
+
+      # Goroutine leak индикатор
+      - alert: PossibleGoroutineLeak
+        expr: increase(go_goroutines[15m]) > 100
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Possible goroutine leak detected"
+          description: "Goroutine count increased by {{ $value }} in 15 minutes"
+
+  - name: container_alerts
+    rules:
+      # Контейнер рестартует часто
+      - alert: ContainerHighRestartRate
+        expr: increase(container_start_time_seconds[1h]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container restarting frequently"
+          description: "Container {{ $labels.name }} has restarted {{ $value }} times in the last hour"
+
+      # Контейнер использует много CPU
+      - alert: ContainerHighCPU
+        expr: rate(container_cpu_usage_seconds_total[5m]) * 100 > 80
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container high CPU usage"
+          description: "Container {{ $labels.name }} is using {{ $value }}% CPU"
+
+      # Контейнер использует много памяти
+      - alert: ContainerHighMemory
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes * 100 > 90
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container high memory usage"
+          description: "Container {{ $labels.name }} is using {{ $value }}% of memory limit" 
