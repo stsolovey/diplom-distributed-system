@@ -1,4 +1,4 @@
-.PHONY: all build clean test proto docker-up docker-down bench lint golangci-lint tidy fmt
+.PHONY: all build clean test proto docker-up docker-down bench lint golangci-lint tidy fmt phase4-install phase4-check phase4-run phase4-demo phase4-monitoring phase4-analyze
 
 # Переменные
 GOBASE=$(shell pwd)
@@ -96,3 +96,113 @@ tidy:
 
 fmt:
 	go fmt ./... 
+
+# ============================================================================
+# PHASE 4: LOAD TESTING & MONITORING
+# ============================================================================
+
+# Установка k6 и зависимостей
+phase4-install:
+	@echo "🔧 Installing Phase 4 dependencies..."
+	@chmod +x scripts/install-k6.sh
+	@./scripts/install-k6.sh
+	@echo "Installing Python dependencies..."
+	@pip3 install -r requirements-phase4.txt
+	@echo "✅ Phase 4 dependencies installed"
+
+# Проверка готовности системы
+phase4-check:
+	@echo "🔍 Checking Phase 4 readiness..."
+	@chmod +x scripts/check-phase4-readiness.sh
+	@./scripts/check-phase4-readiness.sh
+
+# Запуск полного цикла нагрузочного тестирования
+phase4-run:
+	@echo "🚀 Starting Phase 4 comprehensive load testing..."
+	@chmod +x scripts/run-all-tests.sh
+	@./scripts/run-all-tests.sh
+
+# Быстрая демонстрация с мониторингом
+phase4-demo:
+	@echo "🎯 Running Phase 4 demo (smoke + load test)..."
+	@chmod +x scripts/run-all-tests.sh
+	@SKIP_SOAK=true ./scripts/run-all-tests.sh smoke load
+
+# Запуск только мониторинга
+phase4-monitoring:
+	@echo "📊 Starting monitoring infrastructure..."
+	@docker-compose -f docker/monitoring-compose.yml up -d
+	@echo "Monitoring services started:"
+	@echo "  Prometheus: http://localhost:9090"
+	@echo "  Grafana: http://localhost:3000 (admin/admin123)"
+	@echo "  AlertManager: http://localhost:9093"
+
+# Остановка мониторинга
+phase4-monitoring-down:
+	@echo "🛑 Stopping monitoring infrastructure..."
+	@docker-compose -f docker/monitoring-compose.yml down
+
+# Анализ результатов тестирования
+phase4-analyze:
+	@echo "📈 Analyzing test results..."
+	@if [ -z "$(RESULTS_DIR)" ]; then \
+		echo "Usage: make phase4-analyze RESULTS_DIR=path/to/results"; \
+		echo "Example: make phase4-analyze RESULTS_DIR=results/load_testing/20240101_120000"; \
+	else \
+		chmod +x scripts/analyze-results.py; \
+		python3 scripts/analyze-results.py $(RESULTS_DIR) --all; \
+	fi
+
+# Отдельные тесты
+phase4-smoke:
+	@echo "💨 Running smoke test..."
+	@chmod +x scripts/run-all-tests.sh
+	@./scripts/run-all-tests.sh smoke
+
+phase4-load:
+	@echo "⚡ Running load test..."
+	@chmod +x scripts/run-all-tests.sh
+	@./scripts/run-all-tests.sh load
+
+phase4-spike:
+	@echo "📈 Running spike test..."
+	@chmod +x scripts/run-all-tests.sh
+	@./scripts/run-all-tests.sh spike
+
+phase4-soak:
+	@echo "🕐 Running soak test (2 hours)..."
+	@chmod +x scripts/run-all-tests.sh
+	@./scripts/run-all-tests.sh soak
+
+# Очистка результатов тестирования
+phase4-clean:
+	@echo "🧹 Cleaning Phase 4 test results..."
+	@rm -rf results/load_testing/*
+	@echo "✅ Test results cleaned"
+
+# Справка по Phase 4
+phase4-help:
+	@echo "📚 Phase 4 Load Testing Commands:"
+	@echo ""
+	@echo "Setup & Preparation:"
+	@echo "  make phase4-install     - Install k6 and Python dependencies"
+	@echo "  make phase4-check       - Check system readiness"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make phase4-run         - Run complete test suite"
+	@echo "  make phase4-demo        - Quick demo (smoke + load)"
+	@echo "  make phase4-smoke       - Smoke test only"
+	@echo "  make phase4-load        - Load test only"
+	@echo "  make phase4-spike       - Spike test only"
+	@echo "  make phase4-soak        - Soak test only (2 hours)"
+	@echo ""
+	@echo "Monitoring:"
+	@echo "  make phase4-monitoring  - Start monitoring stack"
+	@echo "  make phase4-monitoring-down - Stop monitoring"
+	@echo ""
+	@echo "Analysis:"
+	@echo "  make phase4-analyze RESULTS_DIR=path - Analyze test results"
+	@echo ""
+	@echo "Maintenance:"
+	@echo "  make phase4-clean       - Clean test results"
+	@echo "  make phase4-help        - Show this help" 
