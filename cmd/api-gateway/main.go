@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -15,10 +14,17 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/stsolovey/diplom-distributed-system/internal/config"
+	"github.com/stsolovey/diplom-distributed-system/internal/metrics"
 )
 
 const (
@@ -32,22 +38,21 @@ const (
 	rsaKeyBits             = 2048
 	localhostIPv4          = 127
 	certValidityDays       = 365
+	proxyTimeout           = 5 * time.Second
 )
 
 // ServiceInfo represents a backend service handled by the gateway.
 type ServiceInfo struct {
 	Name     string `json:"name"`
 	Endpoint string `json:"endpoint"`
+	Path     string `json:"path"`
 	Healthy  bool   `json:"healthy"`
 }
 
 // infrastructure code for future use
 //
 //nolint:gochecknoglobals,unused // dependency injection would create unnecessary boilerplate here
-var services = []ServiceInfo{
-	{Name: "ingest", Endpoint: getIngestURL()},
-	{Name: "processor", Endpoint: getProcessorURL()},
-}
+var services []ServiceInfo
 
 // httpClientWithTimeout is an HTTP client tuned for short health/stats requests.
 //
@@ -85,54 +90,48 @@ func getProcessorURL() string {
 }
 
 func main() {
-	// Создаем самоподписанные сертификаты для демо
-	cert, key, err := generateSelfSignedCert()
-	if err != nil {
-		panic(fmt.Errorf("failed to generate certificates: %w", err))
-	}
+	cfg := config.LoadConfig()
 
-	// Сохраняем сертификаты во временные файлы
-	certFile, keyFile, cleanup, err := saveCerts(cert, key)
-	if err != nil {
-		panic(fmt.Errorf("failed to save certificates: %w", err))
-	}
-	defer cleanup()
+	// Инициализация сервисов
+	initializeServices(cfg)
 
-	// Создаем HTTP/2 Gateway
-	gateway := NewHTTP2Gateway("localhost:50052") // gRPC server address
-	if gateway == nil {
-		panic("failed to create gateway")
+	// HTTP сервер
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", handleProxy)
+	mux.HandleFunc("/health", handleHealth)
+	mux.HandleFunc("/status", handleSystemStatus)
+	mux.Handle("/metrics", promhttp.Handler()) // Добавляем endpoint для метрик
+
+	// Создаем HTTP сервер
+	srv := &http.Server{
+		Addr:         ":8080", // Используем обычный HTTP порт
+		Handler:      mux,
+		ReadTimeout:  serverReadTimeout,
+		WriteTimeout: serverWriteTimeout,
 	}
 
 	// Graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	_ = ctx // используется для контекста приложения
-
-	// Обработка сигналов
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-sigChan
 		log.Println("Shutting down gateway...")
-		cancel()
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeoutSeconds*time.Second)
 		defer shutdownCancel()
 
-		if err := gateway.Stop(shutdownCtx); err != nil {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("Error during shutdown: %v", err)
 		}
 	}()
 
-	// Запускаем HTTP/2 gateway
-	log.Println("Starting HTTP/2 Gateway on https://localhost:8443")
-	log.Println("Testing: curl -k -X POST https://localhost:8443/ingest -d '{\"source\":\"test\",\"data\":\"hello\"}'")
+	// Запускаем HTTP сервер
+	log.Println("Starting API Gateway on http://localhost:8080")
+	log.Println("Testing: curl -X POST http://localhost:8080/ingest -d '{\"source\":\"test\",\"data\":\"hello\"}'")
 
-	if err := gateway.Start(":8443", certFile, keyFile); err != nil {
-		log.Printf("Gateway error: %v", err)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("Server error: %v", err)
 	}
 }
 
@@ -222,55 +221,93 @@ func saveCerts(cert, key []byte) (string, string, func(), error) {
 	return certF.Name(), keyF.Name(), cleanup, nil
 }
 
-// proxyToIngest проксирует запросы к Ingest сервису.
-//
-//nolint:unused // infrastructure code for future use
-func proxyToIngest(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+// initializeServices инициализирует список сервисов
+func initializeServices(cfg *config.Config) {
+	services = []ServiceInfo{
+		{Name: "ingest", Endpoint: getIngestURL(), Path: "/ingest"},
+		{Name: "processor", Endpoint: getProcessorURL(), Path: "/enqueue"},
+	}
+}
 
+// handleProxy обрабатывает проксирование запросов.
+func handleProxy(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	// Определяем сервис по пути
+	var targetService *ServiceInfo
+	for i := range services {
+		if strings.HasPrefix(r.URL.Path, services[i].Path) {
+			targetService = &services[i]
+			break
+		}
+	}
+
+	if targetService == nil {
+		metrics.GatewayRequestsTotal.WithLabelValues(r.Method, r.URL.Path, "404").Inc()
+		metrics.GatewayRequestDuration.WithLabelValues(r.Method, r.URL.Path, "404").Observe(time.Since(start).Seconds())
+		http.NotFound(w, r)
 		return
 	}
 
-	// Создаем новый запрос к Ingest сервису.
-	ingestURL := getIngestURL() + "/ingest"
-
-	// Копируем тело запроса.
-	body, err := io.ReadAll(r.Body)
+	// Создаем URL для проксирования
+	targetURL, err := url.Parse(targetService.Endpoint + r.URL.Path)
 	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-
-		return
-	}
-	defer r.Body.Close()
-
-	// Отправляем запрос.
-	ingestReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, ingestURL, bytes.NewReader(body))
-	if err != nil {
-		log.Printf("Failed to create request to ingest: %v", err)
-		http.Error(w, "Failed to proxy request", http.StatusInternalServerError)
-
+		metrics.GatewayRequestsTotal.WithLabelValues(r.Method, r.URL.Path, "500").Inc()
+		metrics.GatewayRequestDuration.WithLabelValues(r.Method, r.URL.Path, "500").Observe(time.Since(start).Seconds())
+		http.Error(w, "Invalid target URL", http.StatusInternalServerError)
 		return
 	}
 
-	ingestReq.Header.Set("Content-Type", "application/json")
+	// Создаем новый запрос
+	ctx, cancel := context.WithTimeout(r.Context(), proxyTimeout)
+	defer cancel()
 
-	resp, err := httpClientWithTimeout.Do(ingestReq)
+	proxyReq, err := http.NewRequestWithContext(ctx, r.Method, targetURL.String(), r.Body)
 	if err != nil {
-		log.Printf("Failed to proxy to ingest: %v", err)
-		http.Error(w, "Failed to proxy request", http.StatusServiceUnavailable)
+		metrics.GatewayRequestsTotal.WithLabelValues(r.Method, r.URL.Path, "500").Inc()
+		metrics.GatewayRequestDuration.WithLabelValues(r.Method, r.URL.Path, "500").Observe(time.Since(start).Seconds())
+		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
+		return
+	}
 
+	// Копируем заголовки
+	for key, values := range r.Header {
+		for _, value := range values {
+			proxyReq.Header.Add(key, value)
+		}
+	}
+
+	// Выполняем запрос
+	resp, err := httpClientWithTimeout.Do(proxyReq)
+	if err != nil {
+		metrics.GatewayRequestsTotal.WithLabelValues(r.Method, r.URL.Path, "503").Inc()
+		metrics.GatewayRequestDuration.WithLabelValues(r.Method, r.URL.Path, "503").Observe(time.Since(start).Seconds())
+		metrics.GatewayUpstreamRequestsTotal.WithLabelValues(targetService.Name, "error").Inc()
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	defer resp.Body.Close()
 
-	// Копируем ответ.
-	w.Header().Set("Content-Type", "application/json")
+	// Копируем заголовки ответа
+	for key, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+
+	// Устанавливаем статус код
 	w.WriteHeader(resp.StatusCode)
 
-	if _, err = io.Copy(w, resp.Body); err != nil {
+	// Копируем тело ответа
+	if _, err := io.Copy(w, resp.Body); err != nil {
 		log.Printf("Failed to copy response body: %v", err)
 	}
+
+	// Обновляем метрики
+	statusCode := strconv.Itoa(resp.StatusCode)
+	metrics.GatewayRequestsTotal.WithLabelValues(r.Method, r.URL.Path, statusCode).Inc()
+	metrics.GatewayRequestDuration.WithLabelValues(r.Method, r.URL.Path, statusCode).Observe(time.Since(start).Seconds())
+	metrics.GatewayUpstreamRequestsTotal.WithLabelValues(targetService.Name, "success").Inc()
 }
 
 // handleSystemStatus возвращает статус всех сервисов.

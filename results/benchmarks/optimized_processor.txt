@@ -1,0 +1,82 @@
+2025/06/15 16:14:55 Created new stream: DIPLOM_STREAM
+2025/06/15 16:14:55 Starting worker pool with 2 workers
+2025/06/15 16:14:55 Worker 1 started
+2025/06/15 16:14:55 Worker 0 started
+2025/06/15 16:14:55 Stopping worker pool...
+2025/06/15 16:15:25 Worker 0 stopping
+2025/06/15 16:15:25 Worker 1 stopping
+2025/06/15 16:15:25 Starting worker pool with 2 workers
+2025/06/15 16:15:25 Worker 1 started
+2025/06/15 16:15:25 Worker 0 started
+2025/06/15 16:15:25 Stopping worker pool...
+2025/06/15 16:15:35 Worker 1 stopping
+2025/06/15 16:15:35 Worker 0 stopping
+2025/06/15 16:15:35 Starting worker pool with 2 workers
+2025/06/15 16:15:35 Worker 0 started
+2025/06/15 16:15:35 Worker 1 started
+2025/06/15 16:15:35 Worker 0 stopping
+2025/06/15 16:15:35 Worker 1 stopping
+2025/06/15 16:15:35 Starting worker pool with 4 workers
+2025/06/15 16:15:35 Worker 2 started
+2025/06/15 16:15:35 Worker 3 started
+2025/06/15 16:15:35 Worker 2 stopping
+2025/06/15 16:15:35 Worker 0 started
+2025/06/15 16:15:35 Worker 0 stopping - channel closed
+2025/06/15 16:15:35 Worker 3 stopping
+2025/06/15 16:15:35 Worker 1 started
+2025/06/15 16:15:35 Worker 1 stopping
+2025/06/15 16:15:35 Stopping worker pool...
+goos: linux
+goarch: amd64
+pkg: github.com/stsolovey/diplom-distributed-system/internal/processor
+cpu: AMD Ryzen 7 5800H with Radeon Graphics         
+BenchmarkWorkerPool-16    	2025/06/15 16:15:35 Starting worker pool with 4 workers
+2025/06/15 16:15:35 Worker 1 started
+2025/06/15 16:15:35 Worker 2 started
+2025/06/15 16:15:35 Worker 3 started
+2025/06/15 16:15:35 Worker 0 started
+2025/06/15 16:15:35 Stopping worker pool...
+2025/06/15 16:15:35 Worker 1 stopping
+2025/06/15 16:15:35 Worker 2 stopping
+2025/06/15 16:15:35 Worker 0 stopping
+2025/06/15 16:15:35 Worker 3 stopping
+2025/06/15 16:15:35 Starting worker pool with 4 workers
+2025/06/15 16:15:35 Worker 2 started
+2025/06/15 16:15:35 Worker 3 started
+2025/06/15 16:15:35 Worker 1 started
+2025/06/15 16:15:35 Worker 0 started
+2025/06/15 16:15:35 Stopping worker pool...
+2025/06/15 16:15:35 Worker 1 stopping
+2025/06/15 16:15:35 Worker 0 stopping
+2025/06/15 16:15:35 Worker 2 stopping
+2025/06/15 16:15:35 Worker 3 stopping
+2025/06/15 16:15:38 Starting worker pool with 4 workers
+2025/06/15 16:15:38 Worker 2 started
+2025/06/15 16:15:38 Worker 0 started
+2025/06/15 16:15:38 Worker 3 started
+2025/06/15 16:15:38 Worker 1 started
+2025/06/15 16:15:40 Error fetching message: nats: no heartbeat received
+2025/06/15 16:15:41 Stopping worker pool...
+2025/06/15 16:15:41 Worker 0 stopping
+2025/06/15 16:15:41 Worker 2 stopping
+2025/06/15 16:15:41 Worker 1 stopping
+2025/06/15 16:15:41 Worker 3 stopping
+2025/06/15 16:15:52 Starting worker pool with 4 workers
+2025/06/15 16:15:52 Worker 2 started
+2025/06/15 16:15:52 Worker 1 started
+2025/06/15 16:15:52 Worker 0 started
+2025/06/15 16:15:52 Worker 3 started
+2025/06/15 16:16:04 Worker 1 stopping
+2025/06/15 16:16:04 Worker 2 stopping
+2025/06/15 16:16:04 Worker 0 stopping
+2025/06/15 16:16:04 Worker 3 stopping
+2025/06/15 16:16:04 Stopping worker pool...
+ 4219707	      2834 ns/op	     208 B/op	       3 allocs/op
+--- BENCH: BenchmarkWorkerPool-16
+    worker_pool_test.go:133: Processed 1 messages
+    worker_pool_test.go:133: Processed 100 messages
+    worker_pool_test.go:133: Processed 10000 messages
+    worker_pool_test.go:133: Processed 1000000 messages
+    worker_pool_test.go:133: Processed 4219707 messages
+PASS
+ok  	github.com/stsolovey/diplom-distributed-system/internal/processor	69.311s

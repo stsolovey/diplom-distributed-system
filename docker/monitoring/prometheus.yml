@@ -41,7 +41,7 @@ scrape_configs:
   # API Gateway метрики
   - job_name: 'api-gateway'
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['172.17.0.1:8080']
     scrape_interval: 10s
     metrics_path: /metrics
     scrape_timeout: 5s
@@ -49,7 +49,7 @@ scrape_configs:
   # Ingest Service метрики
   - job_name: 'ingest-service'
     static_configs:
-      - targets: ['host.docker.internal:8081']
+      - targets: ['172.17.0.1:8081']
     scrape_interval: 10s
     metrics_path: /metrics
     scrape_timeout: 5s
@@ -57,7 +57,7 @@ scrape_configs:
   # Processor Service метрики
   - job_name: 'processor-service'
     static_configs:
-      - targets: ['host.docker.internal:8082']
+      - targets: ['172.17.0.1:8082']
     scrape_interval: 10s
     metrics_path: /metrics
     scrape_timeout: 5s
@@ -65,7 +65,7 @@ scrape_configs:
   # gRPC Service метрики
   - job_name: 'grpc-service'
     static_configs:
-      - targets: ['host.docker.internal:50052']
+      - targets: ['172.17.0.1:50052']
     scrape_interval: 10s
     metrics_path: /metrics
     scrape_timeout: 5s
@@ -73,7 +73,7 @@ scrape_configs:
   # NATS Server метрики (если используется)
   - job_name: 'nats-server'
     static_configs:
-      - targets: ['host.docker.internal:8222']
+      - targets: ['172.17.0.1:8222']
     scrape_interval: 15s
     metrics_path: /metrics
     scrape_timeout: 5s
@@ -81,7 +81,7 @@ scrape_configs:
   # Kafka JMX метрики (если используется)
   - job_name: 'kafka-jmx'
     static_configs:
-      - targets: ['host.docker.internal:9999']
+      - targets: ['172.17.0.1:9999']
     scrape_interval: 30s
     metrics_path: /metrics
     scrape_timeout: 10s

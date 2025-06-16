@@ -10,7 +10,9 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stsolovey/diplom-distributed-system/internal/config"
+	"github.com/stsolovey/diplom-distributed-system/internal/metrics"
 	"github.com/stsolovey/diplom-distributed-system/internal/models"
 	"github.com/stsolovey/diplom-distributed-system/internal/processor"
 	"github.com/stsolovey/diplom-distributed-system/internal/queue"
@@ -61,11 +63,39 @@ func main() { //nolint:funlen
 		os.Exit(1) //nolint:gocritic
 	}
 
+	// Обновляем метрики worker pool
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				stats := pool.GetStats()
+				// У processor.Stats нет поля ActiveWorkers, используем ProcessedCount как индикатор активности
+				metrics.ProcessorWorkerPoolSize.Set(float64(cfg.ProcessorWorkers))
+
+				queueStats := queueProvider.Stats()
+				// queue.Stats имеет поле CurrentSize типа int
+				metrics.ProcessorQueueSize.Set(float64(queueStats.CurrentSize))
+
+				// Обновляем метрики обработки
+				metrics.ProcessorMessagesTotal.WithLabelValues("processed").Add(float64(stats.ProcessedCount))
+				if stats.ErrorCount > 0 {
+					metrics.ProcessorMessagesTotal.WithLabelValues("error").Add(float64(stats.ErrorCount))
+				}
+			}
+		}
+	}()
+
 	// HTTP сервер.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", app.handleHealth)
 	mux.HandleFunc("/stats", app.handleStats)
 	mux.HandleFunc("/enqueue", app.handleEnqueue) // Новый эндпоинт для приема сообщений.
+	mux.Handle("/metrics", promhttp.Handler())    // Добавляем endpoint для метрик
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.ProcessorPort,

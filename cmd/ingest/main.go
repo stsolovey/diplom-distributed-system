@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stsolovey/diplom-distributed-system/internal/client"
 	"github.com/stsolovey/diplom-distributed-system/internal/config"
+	"github.com/stsolovey/diplom-distributed-system/internal/metrics"
 	"github.com/stsolovey/diplom-distributed-system/internal/models"
 )
 
@@ -70,6 +72,7 @@ func main() {
 	mux.HandleFunc("/ingest", app.handleIngest)
 	mux.HandleFunc("/health", handleHealth)
 	mux.HandleFunc("/stats", app.handleStats)
+	mux.Handle("/metrics", promhttp.Handler())
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.IngestPort,
@@ -105,20 +108,25 @@ func main() {
 
 // handleIngest обрабатывает входящие данные.
 func (app *App) handleIngest(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	start := time.Now()
 
+	if r.Method != http.MethodPost {
+		metrics.IngestRequestsTotal.WithLabelValues("method_not_allowed").Inc()
+		metrics.IngestRequestDuration.WithLabelValues("method_not_allowed").Observe(time.Since(start).Seconds())
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	var req IngestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		metrics.IngestRequestsTotal.WithLabelValues("bad_request").Inc()
+		metrics.IngestRequestDuration.WithLabelValues("bad_request").Observe(time.Since(start).Seconds())
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
-
 		return
 	}
 
 	app.stats.TotalReceived.Add(1)
+	metrics.IngestMessagesProcessed.WithLabelValues("received").Inc()
 
 	// Создаем сообщение
 	msg := &models.DataMessage{
@@ -135,13 +143,18 @@ func (app *App) handleIngest(w http.ResponseWriter, r *http.Request) {
 
 	if err := app.processorClient.SendMessage(ctx, msg); err != nil {
 		app.stats.TotalFailed.Add(1)
+		metrics.IngestRequestsTotal.WithLabelValues("service_unavailable").Inc()
+		metrics.IngestRequestDuration.WithLabelValues("service_unavailable").Observe(time.Since(start).Seconds())
+		metrics.IngestMessagesProcessed.WithLabelValues("failed").Inc()
 		log.Printf("Failed to send message to processor: %v", err)
 		http.Error(w, "Failed to process message", http.StatusServiceUnavailable)
-
 		return
 	}
 
 	app.stats.TotalSent.Add(1)
+	metrics.IngestRequestsTotal.WithLabelValues("success").Inc()
+	metrics.IngestRequestDuration.WithLabelValues("success").Observe(time.Since(start).Seconds())
+	metrics.IngestMessagesProcessed.WithLabelValues("sent").Inc()
 
 	// Отправляем ответ
 	resp := IngestResponse{
