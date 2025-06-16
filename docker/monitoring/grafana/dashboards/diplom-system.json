@@ -1,147 +1,184 @@
 {
   "dashboard": {
     "id": null,
-    "title": "Diplom Distributed System - Load Testing Dashboard",
-    "tags": ["diplom", "load-testing", "performance"],
-    "style": "dark",
+    "title": "Diplom Distributed System Load Testing Dashboard",
+    "tags": ["diplom", "load-testing", "distributed-system"],
     "timezone": "browser",
-    "refresh": "5s",
-    "time": {
-      "from": "now-1h",
-      "to": "now"
-    },
     "panels": [
       {
         "id": 1,
-        "title": "System Overview",
+        "title": "Request Rate (RPS)",
         "type": "stat",
-        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
         "targets": [
           {
-            "expr": "rate(http_requests_total[1m]) * 60",
-            "legendFormat": "Requests/min"
-          },
-          {
-            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) * 1000",
-            "legendFormat": "P95 Latency (ms)"
-          },
-          {
-            "expr": "rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m]) * 100",
-            "legendFormat": "Error Rate (%)"
-          },
-          {
-            "expr": "sum(queue_current_size)",
-            "legendFormat": "Queue Size"
+            "expr": "sum(rate(ingest_requests_total[1m]))",
+            "refId": "A"
           }
         ],
-        "options": {
-          "reduceOptions": {
-            "values": false,
-            "calcs": ["lastNotNull"],
-            "fields": ""
-          },
-          "orientation": "horizontal",
-          "textMode": "auto",
-          "colorMode": "value",
-          "graphMode": "area",
-          "justifyMode": "auto"
-        },
         "fieldConfig": {
           "defaults": {
-            "mappings": [],
-            "thresholds": {
-              "steps": [
-                {"color": "green", "value": null},
-                {"color": "red", "value": 80}
-              ]
-            }
+            "unit": "reqps",
+            "min": 0
           }
-        }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
       },
       {
         "id": 2,
-        "title": "HTTP Request Rate",
-        "type": "graph",
-        "gridPos": {"h": 9, "w": 12, "x": 0, "y": 8},
+        "title": "P95 Latency",
+        "type": "stat",
         "targets": [
           {
-            "expr": "rate(http_requests_total[1m]) * 60",
-            "legendFormat": "{{job}} - {{method}} {{status}}"
+            "expr": "histogram_quantile(0.95, sum(rate(ingest_request_duration_seconds_bucket[1m])) by (le))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "min": 0
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate(ingest_requests_total{status=\"success\"}[1m])) / sum(rate(ingest_requests_total[1m])) * 100",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "Active Workers",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "processor_worker_pool_size",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "min": 0
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+      },
+      {
+        "id": 5,
+        "title": "Request Rate Over Time",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(ingest_requests_total[1m]))",
+            "refId": "A",
+            "legendFormat": "Total RPS"
+          },
+          {
+            "expr": "sum(rate(ingest_requests_total{status=\"success\"}[1m]))",
+            "refId": "B",
+            "legendFormat": "Success RPS"
           }
         ],
         "yAxes": [
           {
-            "label": "Requests per minute",
+            "label": "Requests/sec",
             "min": 0
           }
         ],
-        "legend": {
-          "alignAsTable": true,
-          "rightSide": true,
-          "values": true,
-          "current": true,
-          "max": true,
-          "min": true,
-          "avg": true
-        }
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
       },
       {
-        "id": 3,
-        "title": "Response Time Distribution",
+        "id": 6,
+        "title": "Latency Distribution",
         "type": "graph",
-        "gridPos": {"h": 9, "w": 12, "x": 12, "y": 8},
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m])) * 1000",
+            "expr": "histogram_quantile(0.50, sum(rate(ingest_request_duration_seconds_bucket[1m])) by (le))",
+            "refId": "A",
             "legendFormat": "P50"
           },
           {
-            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) * 1000",
+            "expr": "histogram_quantile(0.95, sum(rate(ingest_request_duration_seconds_bucket[1m])) by (le))",
+            "refId": "B",
             "legendFormat": "P95"
           },
           {
-            "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) * 1000",
+            "expr": "histogram_quantile(0.99, sum(rate(ingest_request_duration_seconds_bucket[1m])) by (le))",
+            "refId": "C",
             "legendFormat": "P99"
           }
         ],
         "yAxes": [
           {
-            "label": "Response time (ms)",
+            "label": "Latency (seconds)",
             "min": 0
           }
-        ]
-      }
-    ],
-    "templating": {
-      "list": []
-    },
-    "annotations": {
-      "list": [
-        {
-          "name": "Load Test Events",
-          "datasource": "Prometheus",
-          "enable": true,
-          "expr": "changes(up[1m]) > 0",
-          "iconColor": "rgba(255, 96, 96, 1)",
-          "tags": ["load-test"],
-          "textFormat": "Service {{instance}} state changed",
-          "titleFormat": "Service State Change"
-        }
-      ]
-    },
-    "schemaVersion": 30,
-    "version": 1,
-    "links": [
-      {
-        "title": "Prometheus",
-        "url": "http://localhost:9090",
-        "type": "link"
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
       },
       {
-        "title": "AlertManager",
-        "url": "http://localhost:9093",
-        "type": "link"
+        "id": 7,
+        "title": "Queue Size",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "processor_queue_size",
+            "refId": "A",
+            "legendFormat": "Queue Size"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Messages",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "Messages Processed",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(processor_messages_total[1m]))",
+            "refId": "A",
+            "legendFormat": "Processing Rate"
+          },
+          {
+            "expr": "sum(rate(ingest_messages_processed_total[1m]))",
+            "refId": "B",
+            "legendFormat": "Ingest Rate"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Messages/sec",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
       }
-    ]
+    ],
+    "time": {
+      "from": "now-5m",
+      "to": "now"
+    },
+    "refresh": "5s"
   }
 } 

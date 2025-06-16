@@ -21,8 +21,9 @@ export let options = {
   },
 };
 
-// Базовый URL
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+// Базовые URL для сервисов
+const INGEST_URL = __ENV.INGEST_URL || 'http://localhost:8081';
+const PROCESSOR_URL = __ENV.PROCESSOR_URL || 'http://localhost:8082';
 
 // Генерация тестовых данных
 function generateTestMessage() {
@@ -44,19 +45,18 @@ function generateTestMessage() {
 
 // Главная функция теста
 export default function() {
-  // 1. Health Check
-  let healthResponse = http.get(`${BASE_URL}/health`);
-  check(healthResponse, {
-    'health check status is 200': (r) => r.status === 200,
-    'health check has healthy flag': (r) => JSON.parse(r.body).healthy === true,
+  // 1. Health Check для Ingest сервиса
+  let ingestHealthResponse = http.get(`${INGEST_URL}/health`);
+  check(ingestHealthResponse, {
+    'ingest health check status is 200': (r) => r.status === 200,
+    'ingest health check has healthy flag': (r) => JSON.parse(r.body).healthy === true,
   });
   
-  // 2. System Status Check
-  let statusResponse = http.get(`${BASE_URL}/api/v1/status`);
-  check(statusResponse, {
-    'status endpoint is accessible': (r) => r.status === 200,
-    'status has ingest service': (r) => JSON.parse(r.body).ingest !== undefined,
-    'status has processor service': (r) => JSON.parse(r.body).processor !== undefined,
+  // 2. Health Check для Processor сервиса
+  let processorHealthResponse = http.get(`${PROCESSOR_URL}/health`);
+  check(processorHealthResponse, {
+    'processor health check status is 200': (r) => r.status === 200,
+    'processor health check has healthy flag': (r) => JSON.parse(r.body).healthy === true,
   });
   
   // 3. Send Test Message
@@ -68,7 +68,7 @@ export default function() {
   };
   
   let start = Date.now();
-  let ingestResponse = http.post(`${BASE_URL}/api/v1/ingest`, payload, params);
+  let ingestResponse = http.post(`${INGEST_URL}/ingest`, payload, params);
   let duration = Date.now() - start;
   
   // Записываем время обработки
@@ -106,15 +106,21 @@ export default function() {
 // Функция установки (выполняется один раз)
 export function setup() {
   console.log('🔥 Starting Smoke Test');
-  console.log(`Target: ${BASE_URL}`);
+  console.log(`Ingest Target: ${INGEST_URL}`);
+  console.log(`Processor Target: ${PROCESSOR_URL}`);
   
-  // Проверяем доступность сервиса
-  let response = http.get(`${BASE_URL}/health`);
-  if (response.status !== 200) {
-    throw new Error(`Service is not available: ${response.status}`);
+  // Проверяем доступность сервисов
+  let ingestResponse = http.get(`${INGEST_URL}/health`);
+  if (ingestResponse.status !== 200) {
+    throw new Error(`Ingest service is not available: ${ingestResponse.status}`);
   }
   
-  console.log('✅ Service is available, starting test...');
+  let processorResponse = http.get(`${PROCESSOR_URL}/health`);
+  if (processorResponse.status !== 200) {
+    throw new Error(`Processor service is not available: ${processorResponse.status}`);
+  }
+  
+  console.log('✅ Services are available, starting test...');
   return { startTime: new Date() };
 }
 
@@ -124,10 +130,11 @@ export function teardown(data) {
   console.log(`Started at: ${data.startTime}`);
   console.log(`Finished at: ${new Date()}`);
   
-  // Получаем финальную статистику
-  let statusResponse = http.get(`${BASE_URL}/api/v1/status`);
-  if (statusResponse.status === 200) {
-    console.log('📊 Final system status:');
-    console.log(JSON.stringify(JSON.parse(statusResponse.body), null, 2));
-  }
+  // Проверяем финальное состояние сервисов
+  let ingestHealth = http.get(`${INGEST_URL}/health`);
+  let processorHealth = http.get(`${PROCESSOR_URL}/health`);
+  
+  console.log('📊 Final services status:');
+  console.log(`Ingest: ${ingestHealth.status === 200 ? 'Healthy' : 'Unhealthy'}`);
+  console.log(`Processor: ${processorHealth.status === 200 ? 'Healthy' : 'Unhealthy'}`);
 } 

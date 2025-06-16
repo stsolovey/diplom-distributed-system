@@ -205,4 +205,56 @@ phase4-help:
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make phase4-clean       - Clean test results"
-	@echo "  make phase4-help        - Show this help" 
+	@echo "  make phase4-help        - Show this help"
+
+# ============================================================================
+# DEMO & PRODUCTION COMMANDS
+# ============================================================================
+
+# Полная демонстрация системы за 30 секунд
+demo:
+	@echo "🎯 Starting 30-second system demo..."
+	@echo "1/4 Building system..."
+	@make proto build
+	@echo "2/4 Starting services with monitoring..."
+	@make docker-up-full
+	@sleep 10
+	@echo "3/4 Running health checks..."
+	@make health-check
+	@echo "4/4 Running quick load test..."
+	@make load-test-quick
+	@echo "✅ Demo complete! Check http://localhost:3000 for Grafana"
+
+# Production-ready запуск с полным мониторингом
+docker-up-full:
+	@echo "🚀 Starting production-ready system..."
+	@docker-compose -f docker/docker-compose.yml up -d
+	@docker-compose -f docker/monitoring-compose.yml up -d
+	@echo "Services started:"
+	@echo "  API Gateway: http://localhost:8080"
+	@echo "  Grafana: http://localhost:3000 (admin/admin)"
+	@echo "  Prometheus: http://localhost:9090"
+
+# Проверка работоспособности всех сервисов
+health-check:
+	@echo "🏥 Checking system health..."
+	@curl -f http://localhost:8080/api/v1/status || echo "❌ API Gateway not ready"
+	@curl -f http://localhost:8081/health || echo "❌ Ingest not ready"
+	@curl -f http://localhost:8082/health || echo "❌ Processor not ready"
+	@echo "✅ Health check complete"
+
+# Быстрое нагрузочное тестирование
+load-test-quick:
+	@echo "⚡ Running quick load test..."
+	@if command -v k6 >/dev/null 2>&1; then \
+		k6 run --duration 30s --vus 10 k6/scenarios/quick-demo.js; \
+	else \
+		echo "k6 not found, using curl..."; \
+		for i in {1..50}; do \
+			curl -X POST http://localhost:8080/api/v1/ingest \
+				-H "Content-Type: application/json" \
+				-d '{"source":"demo","data":"test message '$$i'"}' & \
+		done; \
+		wait; \
+	fi
+	@echo "✅ Load test complete" 

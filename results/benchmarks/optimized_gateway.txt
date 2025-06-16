@@ -1,0 +1,4 @@
+# github.com/stsolovey/diplom-distributed-system/cmd/api-gateway [github.com/stsolovey/diplom-distributed-system/cmd/api-gateway.test]
+cmd/api-gateway/main_bench_test.go:25:35: undefined: proxyToIngest
+FAIL	github.com/stsolovey/diplom-distributed-system/cmd/api-gateway [build failed]
+FAIL

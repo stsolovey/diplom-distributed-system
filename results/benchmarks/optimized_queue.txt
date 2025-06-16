@@ -1,0 +1,16 @@
+2025/06/15 16:13:12 CompositeAdapter: failed to publish to provider: mock error
+2025/06/15 16:13:12 CompositeAdapter: 1/2 providers failed during best-effort publish
+2025/06/15 16:13:30 Creating Kafka adapter with brokers: [localhost:32769], topic: test-topic, consumer group: test-group
+2025/06/15 16:13:30 Kafka adapter created successfully
+2025/06/15 16:13:36 Kafka adapter closed successfully
+2025/06/15 16:13:56 Creating Kafka adapter with brokers: [localhost:32770], topic: test-topic-multiple, consumer group: test-group-multiple
+2025/06/15 16:13:56 Kafka adapter created successfully
+2025/06/15 16:14:02 Kafka adapter closed successfully
+goos: linux
+goarch: amd64
+pkg: github.com/stsolovey/diplom-distributed-system/internal/queue
+cpu: AMD Ryzen 7 5800H with Radeon Graphics         
+BenchmarkMemoryQueue_EnqueueDequeue-16    	31965103	       386.8 ns/op	     152 B/op	       4 allocs/op
+BenchmarkMemoryQueue_EnqueueOnly-16       	59453916	       244.1 ns/op	     152 B/op	       3 allocs/op
+PASS
+ok  	github.com/stsolovey/diplom-distributed-system/internal/queue	87.763s

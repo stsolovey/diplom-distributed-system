@@ -39,7 +39,8 @@ export let options = {
   batchPerHost: 10,
 };
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+const INGEST_URL = __ENV.INGEST_URL || 'http://localhost:8081';
+const PROCESSOR_URL = __ENV.PROCESSOR_URL || 'http://localhost:8082';
 
 // Генератор реалистичных сообщений различного размера
 function generateRealisticMessage() {
@@ -129,7 +130,7 @@ export default function() {
   
   // Отправляем запрос с замером времени
   let start = Date.now();
-  let response = http.post(`${BASE_URL}/api/v1/ingest`, payload, params);
+  let response = http.post(`${INGEST_URL}/ingest`, payload, params);
   let processingTime = Date.now() - start;
   
   // Записываем метрики
@@ -163,25 +164,13 @@ export default function() {
   
   // Периодическая проверка статуса системы (каждые 50 итераций)
   if (__ITER % 50 === 0) {
-    let statusResponse = http.get(`${BASE_URL}/api/v1/status`);
-    check(statusResponse, {
-      'system status available': (r) => r.status === 200,
-      'ingest service healthy': (r) => {
-        try {
-          let body = JSON.parse(r.body);
-          return body.ingest && body.ingest.healthy;
-        } catch (e) {
-          return false;
-        }
-      },
-      'processor service healthy': (r) => {
-        try {
-          let body = JSON.parse(r.body);
-          return body.processor && body.processor.healthy;
-        } catch (e) {
-          return false;
-        }
-      },
+    let ingestHealthResponse = http.get(`${INGEST_URL}/health`);
+    let processorHealthResponse = http.get(`${PROCESSOR_URL}/health`);
+    check(ingestHealthResponse, {
+      'ingest service healthy': (r) => r.status === 200 && JSON.parse(r.body).healthy === true,
+    });
+    check(processorHealthResponse, {
+      'processor service healthy': (r) => r.status === 200 && JSON.parse(r.body).healthy === true,
     });
   }
   
@@ -201,27 +190,36 @@ export default function() {
 // Функция установки
 export function setup() {
   console.log('🚀 Starting Load Test');
-  console.log(`Target: ${BASE_URL}`);
+  console.log(`Ingest Target: ${INGEST_URL}`);
+  console.log(`Processor Target: ${PROCESSOR_URL}`);
   console.log(`Test Run ID: ${__ENV.TEST_RUN_ID || 'not_set'}`);
   
   // Проверяем готовность системы
-  let healthCheck = http.get(`${BASE_URL}/health`);
-  if (healthCheck.status !== 200) {
-    throw new Error(`Service health check failed: ${healthCheck.status}`);
+  let ingestHealthCheck = http.get(`${INGEST_URL}/health`);
+  if (ingestHealthCheck.status !== 200) {
+    throw new Error(`Ingest service health check failed: ${ingestHealthCheck.status}`);
   }
   
-  let statusCheck = http.get(`${BASE_URL}/api/v1/status`);
-  if (statusCheck.status !== 200) {
-    throw new Error(`Service status check failed: ${statusCheck.status}`);
+  let processorHealthCheck = http.get(`${PROCESSOR_URL}/health`);
+  if (processorHealthCheck.status !== 200) {
+    throw new Error(`Processor service health check failed: ${processorHealthCheck.status}`);
   }
   
-  console.log('✅ Service is ready for load testing');
+  console.log('✅ Services are ready for load testing');
   
   // Прогрев системы
   console.log('🔥 Warming up the system...');
   for (let i = 0; i < 10; i++) {
-    let warmupMessage = generateRealisticMessage();
-    http.post(`${BASE_URL}/api/v1/ingest`, JSON.stringify(warmupMessage), {
+    let warmupMessage = {
+      source: 'warmup_test',
+      data: `Warmup message ${i} at ${new Date().toISOString()}`,
+      metadata: {
+        type: 'warmup',
+        priority: 'normal',
+        timestamp: new Date().toISOString(),
+      }
+    };
+    http.post(`${INGEST_URL}/ingest`, JSON.stringify(warmupMessage), {
       headers: { 'Content-Type': 'application/json' }
     });
   }
@@ -239,19 +237,13 @@ export function teardown(data) {
   console.log(`Test Run: ${data.testRunId}`);
   console.log(`Duration: ${new Date() - data.startTime}ms`);
   
-  // Финальная статистика системы
-  let finalStatus = http.get(`${BASE_URL}/api/v1/status`);
-  if (finalStatus.status === 200) {
-    try {
-      let stats = JSON.parse(finalStatus.body);
-      console.log('📊 Final System Statistics:');
-      console.log(`  Ingest processed: ${stats.ingest?.stats?.TotalSent || 'N/A'}`);
-      console.log(`  Processor handled: ${stats.processor?.stats?.pool?.ProcessedCount || 'N/A'}`);
-      console.log(`  Queue size: ${stats.processor?.stats?.queue?.CurrentSize || 'N/A'}`);
-    } catch (e) {
-      console.log('Could not parse final statistics');
-    }
-  }
+  // Финальная проверка состояния сервисов
+  let ingestHealth = http.get(`${INGEST_URL}/health`);
+  let processorHealth = http.get(`${PROCESSOR_URL}/health`);
+  
+  console.log('📊 Final Services Status:');
+  console.log(`  Ingest: ${ingestHealth.status === 200 ? 'Healthy' : 'Unhealthy'}`);
+  console.log(`  Processor: ${processorHealth.status === 200 ? 'Healthy' : 'Unhealthy'}`);
   
   console.log('💡 Analysis tips:');
   console.log('  - Check p95/p99 latencies in results');
